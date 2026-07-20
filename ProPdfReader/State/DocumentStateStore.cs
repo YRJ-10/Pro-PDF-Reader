@@ -50,12 +50,17 @@ internal sealed class DocumentStateStore
                     return CreateFreshState(normalizedPath);
                 }
 
-                if (state.SchemaVersion != DocumentState.CurrentSchemaVersion)
+                if (state.SchemaVersion == 1)
+                {
+                    state.SchemaVersion = DocumentState.CurrentSchemaVersion;
+                }
+                else if (state.SchemaVersion != DocumentState.CurrentSchemaVersion)
                 {
                     return CreateFreshState(normalizedPath, isWritable: false);
                 }
 
                 state.FilePath = normalizedPath;
+                state.Normalize();
                 RefreshFileMetadata(state);
                 return state;
             }

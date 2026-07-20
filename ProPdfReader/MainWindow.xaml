@@ -46,6 +46,31 @@
                             Height="30"
                             Click="NextButton_Click"
                             Content="&gt;" />
+                    <Button x:Name="BookmarksPaneButton"
+                            Width="34"
+                            Height="30"
+                            Margin="12,0,0,0"
+                            Click="BookmarksPaneButton_Click"
+                            Content="&#xE8FD;"
+                            FontFamily="Segoe MDL2 Assets"
+                            FontSize="14"
+                            ToolTip="Show bookmarks" />
+                    <Button x:Name="BookmarkPageButton"
+                            Width="34"
+                            Height="30"
+                            Margin="4,0,0,0"
+                            Click="BookmarkPageButton_Click"
+                            Content="&#xE734;"
+                            FontFamily="Segoe MDL2 Assets"
+                            FontSize="14"
+                            ToolTip="Bookmark this page" />
+                    <Button x:Name="HighlightButton"
+                            Width="76"
+                            Height="30"
+                            Margin="4,0,0,0"
+                            Click="HighlightButton_Click"
+                            Content="Highlight"
+                            ToolTip="Highlight selected text" />
                 </StackPanel>
 
                 <TextBlock x:Name="FileNameText"
@@ -58,48 +83,99 @@
         </Border>
 
         <Grid Grid.Row="1">
-            <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Auto"
-                          Background="#E8E8E2">
-                <Grid MinHeight="420">
-                    <Border x:Name="PageHost"
-                            Width="720"
-                            Height="900"
-                            Margin="24"
-                            Padding="0"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Top"
-                            Background="White"
-                            BorderBrush="#CFCFC8"
-                            BorderThickness="1">
-                        <Grid>
-                            <Image x:Name="PageImage"
-                                   Stretch="Uniform"
-                                   RenderOptions.BitmapScalingMode="HighQuality" />
-                            <controls:TextSelectionLayer x:Name="TextSelectionLayer"
-                                                         AutomationProperties.Name="Selectable PDF text" />
-                        </Grid>
-                    </Border>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-                    <TextBlock x:Name="EmptyStateText"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               Foreground="#66665F"
-                               FontSize="17"
-                               Text="Open a PDF to start reading." />
-                </Grid>
-            </ScrollViewer>
-
-            <Border x:Name="LoadingOverlay"
-                    Background="#88F4F4F1"
+            <Border x:Name="BookmarksPane"
+                    Grid.Column="0"
+                    Width="210"
+                    Background="#FBFBF8"
+                    BorderBrush="#D8D8D2"
+                    BorderThickness="0,0,1,0"
                     Visibility="Collapsed">
-                <TextBlock HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           Padding="14,8"
-                           Background="#FBFBF8"
-                           Foreground="#242420"
-                           Text="Opening PDF..." />
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="44" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="12,0,8,0">
+                        <Button DockPanel.Dock="Right"
+                                Width="30"
+                                Height="30"
+                                Click="CloseBookmarksPaneButton_Click"
+                                Content="&#xE711;"
+                                FontFamily="Segoe MDL2 Assets"
+                                ToolTip="Close bookmarks" />
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="#242420"
+                                   Text="Bookmarks" />
+                    </DockPanel>
+
+                    <Grid Grid.Row="1">
+                        <ListBox x:Name="BookmarksList"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 SelectionChanged="BookmarksList_SelectionChanged" />
+                        <TextBlock x:Name="EmptyBookmarksText"
+                                   Margin="18"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Foreground="#6B6B64"
+                                   Text="No bookmarks yet."
+                                   TextAlignment="Center" />
+                    </Grid>
+                </Grid>
             </Border>
+
+            <Grid Grid.Column="1">
+                <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Auto"
+                              Background="#E8E8E2">
+                    <Grid MinHeight="420">
+                        <Border x:Name="PageHost"
+                                Width="720"
+                                Height="900"
+                                Margin="24"
+                                Padding="0"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Top"
+                                Background="White"
+                                BorderBrush="#CFCFC8"
+                                BorderThickness="1">
+                            <Grid>
+                                <Image x:Name="PageImage"
+                                       Stretch="Uniform"
+                                       RenderOptions.BitmapScalingMode="HighQuality" />
+                                <controls:TextSelectionLayer x:Name="TextSelectionLayer"
+                                                             AutomationProperties.Name="Selectable PDF text" />
+                            </Grid>
+                        </Border>
+
+                        <TextBlock x:Name="EmptyStateText"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Foreground="#66665F"
+                                   FontSize="17"
+                                   Text="Open a PDF to start reading." />
+                    </Grid>
+                </ScrollViewer>
+
+                <Border x:Name="LoadingOverlay"
+                        Background="#88F4F4F1"
+                        Visibility="Collapsed">
+                    <TextBlock HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Padding="14,8"
+                               Background="#FBFBF8"
+                               Foreground="#242420"
+                               Text="Opening PDF..." />
+                </Border>
+            </Grid>
         </Grid>
 
         <Border Grid.Row="2" Background="#FBFBF8" BorderBrush="#D8D8D2" BorderThickness="0,1,0,0">

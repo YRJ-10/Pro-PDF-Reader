@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using ProPdfReader.Controls;
 using ProPdfReader.State;
 using ProPdfReader.Text;
 using Windows.Data.Pdf;
@@ -29,6 +30,8 @@ public partial class MainWindow : Window
     private uint _currentPageIndex;
     private int _documentGeneration;
     private bool _isNavigating;
+    private bool _isBusy;
+    private bool _isUpdatingBookmarks;
     private PdfTextService? _textService;
     private DocumentState? _documentState;
 
@@ -40,6 +43,9 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromMilliseconds(750)
         };
         _stateSaveTimer.Tick += StateSaveTimer_Tick;
+        TextSelectionLayer.SelectionChanged += UpdateDocumentToolState;
+        TextSelectionLayer.HighlightRequested += AddHighlightFromSelection;
+        TextSelectionLayer.HighlightRemovalRequested += RemoveHighlight;
         UpdateNavigationState();
     }
 
@@ -81,9 +87,12 @@ public partial class MainWindow : Window
             _currentPageIndex = Math.Min(documentState.LastPageIndex, document.PageCount - 1);
             _documentState = documentState;
             _documentState.LastOpenedUtc = DateTime.UtcNow;
+            _documentState.BookmarkedPages.RemoveAll(pageIndex => pageIndex >= document.PageCount);
+            _documentState.Highlights.RemoveAll(highlight => highlight.PageIndex >= document.PageCount);
 
             FileNameText.Text = Path.GetFileName(path);
             EmptyStateText.Visibility = Visibility.Collapsed;
+            RefreshBookmarksList();
 
             await RenderCurrentPageAsync(generation);
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
@@ -123,6 +132,7 @@ public partial class MainWindow : Window
         _textService = null;
         _documentState = null;
         TextSelectionLayer.ClearPage();
+        RefreshBookmarksList();
 
         if (previousTextService is not null)
         {
@@ -159,6 +169,10 @@ public partial class MainWindow : Window
         var displayWidth = Math.Min(Math.Max(renderedPage.Width, 520), 1200);
         PageHost.Width = displayWidth;
         PageHost.Height = displayWidth * renderedPage.Height / renderedPage.Width;
+        TextSelectionLayer.SetPageGeometry(
+            renderedPage.Width,
+            renderedPage.Height,
+            GetCurrentPageHighlights());
         UpdateNavigationState();
     }
 
@@ -184,6 +198,7 @@ public partial class MainWindow : Window
             if (generation == _documentGeneration && pageIndex == _currentPageIndex)
             {
                 TextSelectionLayer.SetPage(pageText);
+                UpdateDocumentToolState();
             }
         }
         catch (ObjectDisposedException)
@@ -374,7 +389,18 @@ public partial class MainWindow : Window
             return;
         }
 
-        _currentPageIndex = (uint)targetPage;
+        await NavigateToPageAsync((uint)targetPage);
+    }
+
+    private async Task NavigateToPageAsync(uint targetPage)
+    {
+        var document = _document;
+        if (document is null || _isNavigating || targetPage >= document.PageCount || targetPage == _currentPageIndex)
+        {
+            return;
+        }
+
+        _currentPageIndex = targetPage;
         TextSelectionLayer.ClearPage();
         _isNavigating = true;
         var generation = _documentGeneration;
@@ -391,6 +417,7 @@ public partial class MainWindow : Window
                 var elapsed = Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
                 SetStatus($"Page {_currentPageIndex + 1} ready in {elapsed:0} ms | {_currentPath}");
                 QueueStateSave();
+                SyncBookmarkSelection();
                 _ = PrefetchNearbyPagesAsync(generation);
                 _ = LoadTextLayerAsync(generation, _currentPageIndex);
             }
@@ -408,6 +435,20 @@ public partial class MainWindow : Window
 
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.D)
+        {
+            ToggleCurrentPageBookmark();
+            e.Handled = true;
+            return;
+        }
+
+        if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.H)
+        {
+            AddHighlightFromSelection();
+            e.Handled = true;
+            return;
+        }
+
         var direction = e.Key switch
         {
             Key.Left or Key.PageUp => -1,
@@ -429,28 +470,199 @@ public partial class MainWindow : Window
         var hasDocument = _document is not null;
         var pageCount = _document?.PageCount ?? 0;
 
-        PreviousButton.IsEnabled = !_isNavigating && hasDocument && _currentPageIndex > 0;
-        NextButton.IsEnabled = !_isNavigating && hasDocument && _currentPageIndex + 1 < pageCount;
+        PreviousButton.IsEnabled = !_isBusy && !_isNavigating && hasDocument && _currentPageIndex > 0;
+        NextButton.IsEnabled = !_isBusy && !_isNavigating && hasDocument && _currentPageIndex + 1 < pageCount;
         PageStatusText.Text = hasDocument ? $"{_currentPageIndex + 1} / {pageCount}" : "No file";
+        UpdateDocumentToolState();
     }
 
     private void SetBusy(bool isBusy)
     {
+        _isBusy = isBusy;
         LoadingOverlay.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
         OpenButton.IsEnabled = !isBusy;
-        PreviousButton.IsEnabled = !isBusy && _document is not null && _currentPageIndex > 0;
-        NextButton.IsEnabled = !isBusy && _document is not null && _currentPageIndex + 1 < _document.PageCount;
+        UpdateNavigationState();
     }
 
     private void SetNavigationBusy(bool isBusy)
     {
-        OpenButton.IsEnabled = !isBusy;
+        OpenButton.IsEnabled = !_isBusy && !isBusy;
         UpdateNavigationState();
     }
 
     private void SetStatus(string message)
     {
         StatusText.Text = message;
+    }
+
+    private void BookmarksPaneButton_Click(object sender, RoutedEventArgs e)
+    {
+        BookmarksPane.Visibility = BookmarksPane.Visibility == Visibility.Visible
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+        if (BookmarksPane.Visibility == Visibility.Visible)
+        {
+            RefreshBookmarksList();
+        }
+    }
+
+    private void CloseBookmarksPaneButton_Click(object sender, RoutedEventArgs e)
+    {
+        BookmarksPane.Visibility = Visibility.Collapsed;
+    }
+
+    private void BookmarkPageButton_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleCurrentPageBookmark();
+    }
+
+    private void ToggleCurrentPageBookmark()
+    {
+        if (_documentState is null || _document is null || _isBusy || _isNavigating)
+        {
+            return;
+        }
+
+        var bookmarkIndex = _documentState.BookmarkedPages.IndexOf(_currentPageIndex);
+        if (bookmarkIndex >= 0)
+        {
+            _documentState.BookmarkedPages.RemoveAt(bookmarkIndex);
+            SetStatus($"Removed bookmark from page {_currentPageIndex + 1}.");
+        }
+        else
+        {
+            _documentState.BookmarkedPages.Add(_currentPageIndex);
+            _documentState.BookmarkedPages.Sort();
+            SetStatus($"Bookmarked page {_currentPageIndex + 1}.");
+        }
+
+        RefreshBookmarksList();
+        UpdateDocumentToolState();
+        QueueStateSave();
+    }
+
+    private async void BookmarksList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_isUpdatingBookmarks || BookmarksList.SelectedItem is not System.Windows.Controls.ListBoxItem item)
+        {
+            return;
+        }
+
+        if (item.Tag is uint pageIndex)
+        {
+            await NavigateToPageAsync(pageIndex);
+        }
+    }
+
+    private void RefreshBookmarksList()
+    {
+        _isUpdatingBookmarks = true;
+        try
+        {
+            BookmarksList.Items.Clear();
+
+            if (_documentState is not null)
+            {
+                foreach (var pageIndex in _documentState.BookmarkedPages.Order())
+                {
+                    var item = new System.Windows.Controls.ListBoxItem
+                    {
+                        Content = $"Page {pageIndex + 1}",
+                        Tag = pageIndex,
+                        Padding = new Thickness(10, 8, 10, 8)
+                    };
+                    BookmarksList.Items.Add(item);
+                }
+            }
+
+            SyncBookmarkSelection();
+            EmptyBookmarksText.Visibility = BookmarksList.Items.Count == 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+        finally
+        {
+            _isUpdatingBookmarks = false;
+        }
+    }
+
+    private void SyncBookmarkSelection()
+    {
+        _isUpdatingBookmarks = true;
+        try
+        {
+            BookmarksList.SelectedItem = BookmarksList.Items
+                .OfType<System.Windows.Controls.ListBoxItem>()
+                .FirstOrDefault(item => item.Tag is uint pageIndex && pageIndex == _currentPageIndex);
+        }
+        finally
+        {
+            _isUpdatingBookmarks = false;
+        }
+    }
+
+    private void HighlightButton_Click(object sender, RoutedEventArgs e)
+    {
+        AddHighlightFromSelection();
+    }
+
+    private void AddHighlightFromSelection()
+    {
+        var selection = TextSelectionLayer.GetSelection();
+        if (_documentState is null || selection is null || _isBusy || _isNavigating)
+        {
+            return;
+        }
+
+        _documentState.Highlights.Add(new HighlightState
+        {
+            PageIndex = _currentPageIndex,
+            Text = selection.Text,
+            Rectangles = selection.Rectangles.ToList()
+        });
+
+        TextSelectionLayer.SetHighlights(GetCurrentPageHighlights());
+        TextSelectionLayer.ClearSelection();
+        QueueStateSave();
+        SetStatus($"Highlighted text on page {_currentPageIndex + 1}.");
+    }
+
+    private void RemoveHighlight(Guid highlightId)
+    {
+        if (_documentState is null)
+        {
+            return;
+        }
+
+        var removedCount = _documentState.Highlights.RemoveAll(highlight => highlight.Id == highlightId);
+        if (removedCount == 0)
+        {
+            return;
+        }
+
+        TextSelectionLayer.SetHighlights(GetCurrentPageHighlights());
+        QueueStateSave();
+        SetStatus($"Removed highlight from page {_currentPageIndex + 1}.");
+    }
+
+    private IReadOnlyList<HighlightState> GetCurrentPageHighlights()
+    {
+        return _documentState?.Highlights
+            .Where(highlight => highlight.PageIndex == _currentPageIndex)
+            .ToArray() ?? [];
+    }
+
+    private void UpdateDocumentToolState()
+    {
+        var canUseDocumentTools = !_isBusy && !_isNavigating && _documentState is not null;
+        BookmarksPaneButton.IsEnabled = canUseDocumentTools;
+        BookmarkPageButton.IsEnabled = canUseDocumentTools;
+        HighlightButton.IsEnabled = canUseDocumentTools && TextSelectionLayer.HasSelection;
+
+        var isBookmarked = _documentState?.BookmarkedPages.Contains(_currentPageIndex) == true;
+        BookmarkPageButton.Content = isBookmarked ? "\uE735" : "\uE734";
+        BookmarkPageButton.ToolTip = isBookmarked ? "Remove page bookmark" : "Bookmark this page";
     }
 
     private void QueueStateSave()

@@ -36,6 +36,15 @@ Pro PDF Reader is a lightweight Windows PDF reader focused on fast startup and a
 - Replace state files atomically so an interrupted save keeps the previous file intact.
 - Preserve unreadable state files for recovery instead of silently deleting them.
 
+## Phase 5 scope
+
+- Bookmark or unbookmark the current page.
+- Browse bookmarks in a lightweight collapsible side panel.
+- Jump directly to a bookmarked page.
+- Create a persistent highlight from selected text.
+- Remove a highlight from its page context menu.
+- Migrate phase 4 state files forward without losing the last reading position.
+
 ## Performance direction
 
 The first target metric is time-to-first-page:
@@ -51,6 +60,8 @@ Phase 2 background work deliberately starts only after the requested page is vis
 Phase 3 keeps text extraction off the time-to-first-page path. Image-only or scanned PDFs need OCR, which is intentionally outside this phase.
 
 Phase 4 state is stored under `%LocalAppData%\ProPdfReader\state\v1`. It remains local to the Windows account and never changes the source PDF.
+
+Bookmarks and highlights use the same local state file. Ctrl+D toggles a page bookmark, while Ctrl+Shift+H highlights the current text selection.
 
 ## Development
 
