@@ -718,9 +718,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OpenButton_Click(object sender, RoutedEventArgs e)
+    private void FileMenuButton_Click(object sender, RoutedEventArgs e)
     {
-        await OpenPdfFromDialogAsync();
+        FileMenuButton.ContextMenu.IsOpen = true;
     }
 
     private async void HomeOpenButton_Click(object sender, RoutedEventArgs e)
@@ -1415,14 +1415,14 @@ public partial class MainWindow : Window
         _isBusy = isBusy;
         LoadingOverlay.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
         UpdateActivityProgress();
-        OpenButton.IsEnabled = !isBusy;
+        FileOpenMenuItem.IsEnabled = !isBusy;
         UpdateNavigationState();
     }
 
     private void SetNavigationBusy(bool isBusy)
     {
         UpdateActivityProgress();
-        OpenButton.IsEnabled = !_isBusy && !isBusy;
+        FileOpenMenuItem.IsEnabled = !_isBusy && !isBusy;
         UpdateNavigationState();
     }
 

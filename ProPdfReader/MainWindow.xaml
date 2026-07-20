@@ -34,28 +34,25 @@
 
                 <DockPanel Grid.Row="0">
                     <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Menu Margin="0,0,8,0"
-                          VerticalAlignment="Center"
-                          Background="Transparent">
-                        <MenuItem Header="_File">
-                            <MenuItem Header="_Open..."
-                                      InputGestureText="Ctrl+O"
+                    <Button x:Name="FileMenuButton"
+                            Width="52"
+                            Height="30"
+                            Click="FileMenuButton_Click"
+                            Content="File">
+                        <Button.ContextMenu>
+                            <ContextMenu Placement="Bottom">
+                            <MenuItem x:Name="FileOpenMenuItem"
+                                      Header="Open...     Ctrl+O"
                                       Click="FileOpenMenuItem_Click" />
                             <MenuItem x:Name="FileSaveMenuItem"
-                                      Header="_Save local state"
-                                      InputGestureText="Ctrl+S"
+                                      Header="Save local state     Ctrl+S"
                                       Click="FileSaveMenuItem_Click" />
                             <Separator />
-                            <MenuItem Header="_Close"
-                                      InputGestureText="Ctrl+W"
+                            <MenuItem Header="Close     Ctrl+W"
                                       Click="FileCloseMenuItem_Click" />
-                        </MenuItem>
-                    </Menu>
-                    <Button x:Name="OpenButton"
-                            Width="82"
-                            Height="30"
-                            Click="OpenButton_Click"
-                            Content="Open" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
                     <Button x:Name="PreviousButton"
                             Width="34"
                             Height="30"
@@ -402,6 +399,17 @@
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                             <Setter Property="Focusable" Value="False" />
                             <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border Padding="{TemplateBinding Padding}"
+                                                Background="Transparent">
+                                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
                         </Style>
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
