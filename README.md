@@ -54,6 +54,15 @@ Pro PDF Reader is a lightweight Windows PDF reader focused on fast startup and a
 - Edit or remove notes from the panel or page context menu.
 - Migrate older local state to schema 3 without losing reading data.
 
+## Phase 7 scope
+
+- Jump directly to a page by entering its number or pressing Ctrl+L.
+- Zoom from 50% to 200% without reopening the PDF.
+- Fit the page to the available width or the complete viewport.
+- Rotate the page clockwise while keeping text selection and annotations aligned.
+- Find text on demand with Ctrl+F and move between matches across pages.
+- Keep search indexing lazy so it never delays the first visible page.
+
 ## Performance direction
 
 The first target metric is time-to-first-page:
@@ -73,6 +82,8 @@ Phase 4 state is stored under `%LocalAppData%\ProPdfReader\state\v1`. It remains
 Bookmarks and highlights use the same local state file. Ctrl+D toggles a page bookmark, while Ctrl+Shift+H highlights the current text selection.
 
 Ctrl+Shift+N adds a note to the current text selection. Notes remain local and are included in the same atomic document-state file.
+
+Ctrl+F opens document search, Ctrl+L focuses the page number, and Ctrl+0 restores fit-width mode. Search and text extraction remain outside the startup path.
 
 ## Development
 

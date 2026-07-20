@@ -15,14 +15,21 @@
         PreviewKeyDown="Window_PreviewKeyDown">
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="48" />
+            <RowDefinition Height="80" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="28" />
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" Background="#FBFBF8" BorderBrush="#D8D8D2" BorderThickness="0,0,0,1">
-            <DockPanel Margin="10,0">
-                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+            <Grid Margin="10,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="40" />
+                    <RowDefinition Height="40" />
+                </Grid.RowDefinitions>
+
+                <DockPanel Grid.Row="0">
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="OpenButton"
                             Width="82"
                             Height="30"
@@ -34,22 +41,97 @@
                             Margin="12,0,0,0"
                             Click="PreviousButton_Click"
                             Content="&lt;" />
-                    <TextBlock x:Name="PageStatusText"
-                               MinWidth="84"
-                               Margin="10,0"
+                    <TextBox x:Name="PageNumberTextBox"
+                             Width="46"
+                             Height="28"
+                             Margin="8,0,4,0"
+                             HorizontalContentAlignment="Center"
+                             VerticalContentAlignment="Center"
+                             IsEnabled="False"
+                             KeyDown="PageNumberTextBox_KeyDown"
+                             LostKeyboardFocus="PageNumberTextBox_LostKeyboardFocus"
+                             Text="-"
+                             ToolTip="Go to page" />
+                    <TextBlock x:Name="PageCountText"
+                               MinWidth="44"
+                               Margin="0,0,8,0"
                                VerticalAlignment="Center"
-                               Text="No file"
-                               TextAlignment="Center"
+                               Text="/ 0"
                                Foreground="#3B3B37" />
                     <Button x:Name="NextButton"
                             Width="34"
                             Height="30"
                             Click="NextButton_Click"
                             Content="&gt;" />
+                    </StackPanel>
+
+                    <Button x:Name="SearchPaneButton"
+                            DockPanel.Dock="Right"
+                            Width="34"
+                            Height="30"
+                            Margin="8,0,0,0"
+                            VerticalAlignment="Center"
+                            Click="SearchPaneButton_Click"
+                            Content="&#xE721;"
+                            FontFamily="Segoe MDL2 Assets"
+                            FontSize="14"
+                            ToolTip="Find text (Ctrl+F)" />
+
+                    <TextBlock x:Name="FileNameText"
+                               Margin="18,0,8,0"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="#242420"
+                               FontWeight="SemiBold" />
+                </DockPanel>
+
+                <StackPanel Grid.Row="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="ZoomOutButton"
+                            Width="34"
+                            Height="30"
+                            Click="ZoomOutButton_Click"
+                            Content="&#xE949;"
+                            FontFamily="Segoe MDL2 Assets"
+                            FontSize="14"
+                            ToolTip="Zoom out (Ctrl+-)" />
+                    <ComboBox x:Name="ZoomModeComboBox"
+                              Width="100"
+                              Height="30"
+                              Margin="4,0"
+                              IsEditable="True"
+                              IsReadOnly="True"
+                              SelectionChanged="ZoomModeComboBox_SelectionChanged"
+                              ToolTip="Zoom mode">
+                        <ComboBoxItem Tag="FitWidth" Content="Fit width" IsSelected="True" />
+                        <ComboBoxItem Tag="FitPage" Content="Fit page" />
+                        <ComboBoxItem Tag="0.5" Content="50%" />
+                        <ComboBoxItem Tag="0.75" Content="75%" />
+                        <ComboBoxItem Tag="1" Content="100%" />
+                        <ComboBoxItem Tag="1.25" Content="125%" />
+                        <ComboBoxItem Tag="1.5" Content="150%" />
+                        <ComboBoxItem Tag="2" Content="200%" />
+                    </ComboBox>
+                    <Button x:Name="ZoomInButton"
+                            Width="34"
+                            Height="30"
+                            Click="ZoomInButton_Click"
+                            Content="&#xE948;"
+                            FontFamily="Segoe MDL2 Assets"
+                            FontSize="14"
+                            ToolTip="Zoom in (Ctrl++)" />
+                    <Button x:Name="RotateButton"
+                            Width="34"
+                            Height="30"
+                            Margin="4,0,0,0"
+                            Click="RotateButton_Click"
+                            Content="&#xE7AD;"
+                            FontFamily="Segoe MDL2 Assets"
+                            FontSize="14"
+                            ToolTip="Rotate clockwise" />
+                    <Border Width="1" Height="22" Margin="10,0,6,0" Background="#D8D8D2" />
                     <Button x:Name="BookmarksPaneButton"
                             Width="34"
                             Height="30"
-                            Margin="12,0,0,0"
                             Click="BookmarksPaneButton_Click"
                             Content="&#xE8FD;"
                             FontFamily="Segoe MDL2 Assets"
@@ -88,17 +170,62 @@
                             FontSize="14"
                             ToolTip="Show notes" />
                 </StackPanel>
+            </Grid>
+        </Border>
 
-                <TextBlock x:Name="FileNameText"
-                           Margin="18,0,0,0"
+        <Border x:Name="SearchPane"
+                Grid.Row="1"
+                Padding="10,6"
+                Background="#FBFBF8"
+                BorderBrush="#D8D8D2"
+                BorderThickness="0,0,0,1"
+                Visibility="Collapsed">
+            <DockPanel LastChildFill="False">
+                <Button DockPanel.Dock="Right"
+                        Width="30"
+                        Height="30"
+                        Margin="6,0,0,0"
+                        Click="CloseSearchPaneButton_Click"
+                        Content="&#xE711;"
+                        FontFamily="Segoe MDL2 Assets"
+                        ToolTip="Close search" />
+                <Button x:Name="NextSearchResultButton"
+                        DockPanel.Dock="Right"
+                        Width="30"
+                        Height="30"
+                        Margin="4,0,0,0"
+                        Click="NextSearchResultButton_Click"
+                        Content="&#xE70D;"
+                        FontFamily="Segoe MDL2 Assets"
+                        ToolTip="Next result" />
+                <Button x:Name="PreviousSearchResultButton"
+                        DockPanel.Dock="Right"
+                        Width="30"
+                        Height="30"
+                        Margin="8,0,0,0"
+                        Click="PreviousSearchResultButton_Click"
+                        Content="&#xE70E;"
+                        FontFamily="Segoe MDL2 Assets"
+                        ToolTip="Previous result" />
+                <TextBlock x:Name="SearchStatusText"
+                           DockPanel.Dock="Right"
+                           MinWidth="92"
+                           Margin="10,0,0,0"
                            VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis"
-                           Foreground="#242420"
-                           FontWeight="SemiBold" />
+                           Foreground="#595952"
+                           TextAlignment="Right" />
+                <TextBox x:Name="SearchTextBox"
+                         Width="320"
+                         Height="30"
+                         Padding="7,3"
+                         VerticalContentAlignment="Center"
+                         KeyDown="SearchTextBox_KeyDown"
+                         TextChanged="SearchTextBox_TextChanged"
+                         ToolTip="Find text in document" />
             </DockPanel>
         </Border>
 
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -202,9 +329,11 @@
             </Border>
 
             <Grid Grid.Column="1">
-                <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                <ScrollViewer x:Name="DocumentScrollViewer"
+                              HorizontalScrollBarVisibility="Auto"
                               VerticalScrollBarVisibility="Auto"
-                              Background="#E8E8E2">
+                              Background="#E8E8E2"
+                              SizeChanged="DocumentScrollViewer_SizeChanged">
                     <Grid MinHeight="420">
                         <Border x:Name="PageHost"
                                 Width="720"
@@ -247,7 +376,7 @@
             </Grid>
         </Grid>
 
-        <Border Grid.Row="2" Background="#FBFBF8" BorderBrush="#D8D8D2" BorderThickness="0,1,0,0">
+        <Border Grid.Row="3" Background="#FBFBF8" BorderBrush="#D8D8D2" BorderThickness="0,1,0,0">
             <TextBlock x:Name="StatusText"
                        Margin="10,0"
                        VerticalAlignment="Center"

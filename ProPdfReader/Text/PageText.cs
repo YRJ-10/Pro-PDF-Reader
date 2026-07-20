@@ -14,3 +14,8 @@ internal sealed record PageWord(
 {
     public double Height => Top - Bottom;
 }
+
+internal sealed record PdfSearchMatch(
+    uint PageIndex,
+    int StartWordIndex,
+    int EndWordIndex);

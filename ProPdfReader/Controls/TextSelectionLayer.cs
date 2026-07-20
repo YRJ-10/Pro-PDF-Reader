@@ -374,6 +374,23 @@ public sealed class TextSelectionLayer : FrameworkElement
         }
     }
 
+    internal bool SelectRange(int startWordIndex, int endWordIndex)
+    {
+        if (_page is null ||
+            startWordIndex < 0 ||
+            endWordIndex < startWordIndex ||
+            endWordIndex >= _page.Words.Count)
+        {
+            return false;
+        }
+
+        _selectionAnchor = startWordIndex;
+        _selectionEnd = endWordIndex;
+        InvalidateVisual();
+        SelectionChanged?.Invoke();
+        return true;
+    }
+
     private void CopySelection()
     {
         var selection = GetSelection();
