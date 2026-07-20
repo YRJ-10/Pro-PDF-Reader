@@ -8,6 +8,7 @@ public partial class PdfPasswordWindow : Window
     public PdfPasswordWindow(string fileName, bool previousAttemptFailed)
     {
         InitializeComponent();
+        WindowTheme.ApplyDarkTitleBar(this);
         FileNameText.Text = fileName;
         ErrorText.Visibility = previousAttemptFailed ? Visibility.Visible : Visibility.Collapsed;
     }

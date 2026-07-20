@@ -103,6 +103,15 @@ Ctrl+Shift+N adds a note to the current text selection. Notes remain local and a
 
 Ctrl+F opens document search, Ctrl+L focuses the page number, and Ctrl+0 restores fit-width mode. Search and text extraction remain outside the startup path.
 
+## Keyboard and mouse
+
+- Scroll beyond the top or bottom edge to move between pages.
+- Use Ctrl+mouse wheel or Ctrl++/Ctrl+- to zoom.
+- Use Left/Right for the previous or next page; Page Up/Page Down and Space scroll before changing pages.
+- Use Home/End for the current page and Ctrl+Home/Ctrl+End for the first or last document page.
+- Use Ctrl+O to open, Ctrl+F to find, Ctrl+L to enter a page, Ctrl+S to save local reading state, and Ctrl+W to close.
+- Use Ctrl+D for bookmarks, Ctrl+Shift+H for highlights, and Ctrl+Shift+N for notes.
+
 Windows chooses default applications through its own user-controlled Default Apps page. The installer registers Pro PDF Reader as a PDF candidate and can open that page, but it never replaces the current default silently.
 
 Passwords are held only for the current document session so encrypted PDFs can be rendered and searched. They are never written to the local document-state file.

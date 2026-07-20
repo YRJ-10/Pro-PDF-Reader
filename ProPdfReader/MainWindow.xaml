@@ -11,10 +11,11 @@
         MinWidth="820"
         Height="760"
         Width="1120"
-        Background="#F4F4F1"
+        Background="{StaticResource WindowBackgroundBrush}"
         AllowDrop="True"
         PreviewDragOver="Window_PreviewDragOver"
         Drop="Window_Drop"
+        PreviewMouseWheel="Window_PreviewMouseWheel"
         PreviewKeyDown="Window_PreviewKeyDown">
     <Grid>
         <Grid.RowDefinitions>
@@ -24,7 +25,7 @@
             <RowDefinition Height="28" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Background="#FBFBF8" BorderBrush="#D8D8D2" BorderThickness="0,0,0,1">
+        <Border Grid.Row="0" Background="{StaticResource PanelBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
             <Grid Margin="10,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="40" />
@@ -60,7 +61,7 @@
                                Margin="0,0,8,0"
                                VerticalAlignment="Center"
                                Text="/ 0"
-                               Foreground="#3B3B37" />
+                               Foreground="{StaticResource MutedTextBrush}" />
                     <Button x:Name="NextButton"
                             Width="34"
                             Height="30"
@@ -84,7 +85,7 @@
                                Margin="18,0,8,0"
                                VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis"
-                               Foreground="#242420"
+                               Foreground="{StaticResource PrimaryTextBrush}"
                                FontWeight="SemiBold" />
                 </DockPanel>
 
@@ -101,8 +102,6 @@
                               Width="100"
                               Height="30"
                               Margin="4,0"
-                              IsEditable="True"
-                              IsReadOnly="True"
                               SelectionChanged="ZoomModeComboBox_SelectionChanged"
                               ToolTip="Zoom mode">
                         <ComboBoxItem Tag="FitWidth" Content="Fit width" IsSelected="True" />
@@ -112,6 +111,7 @@
                         <ComboBoxItem Tag="1" Content="100%" />
                         <ComboBoxItem Tag="1.25" Content="125%" />
                         <ComboBoxItem Tag="1.5" Content="150%" />
+                        <ComboBoxItem Tag="1.75" Content="175%" />
                         <ComboBoxItem Tag="2" Content="200%" />
                     </ComboBox>
                     <Button x:Name="ZoomInButton"
@@ -131,7 +131,7 @@
                             FontFamily="Segoe MDL2 Assets"
                             FontSize="14"
                             ToolTip="Rotate clockwise" />
-                    <Border Width="1" Height="22" Margin="10,0,6,0" Background="#D8D8D2" />
+                    <Border Width="1" Height="22" Margin="10,0,6,0" Background="{StaticResource BorderBrush}" />
                     <Button x:Name="BookmarksPaneButton"
                             Width="34"
                             Height="30"
@@ -179,8 +179,8 @@
         <Border x:Name="SearchPane"
                 Grid.Row="1"
                 Padding="10,6"
-                Background="#FBFBF8"
-                BorderBrush="#D8D8D2"
+                Background="{StaticResource PanelBackgroundBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
                 BorderThickness="0,0,0,1"
                 Visibility="Collapsed">
             <DockPanel LastChildFill="False">
@@ -215,7 +215,7 @@
                            MinWidth="92"
                            Margin="10,0,0,0"
                            VerticalAlignment="Center"
-                           Foreground="#595952"
+                           Foreground="{StaticResource MutedTextBrush}"
                            TextAlignment="Right" />
                 <TextBox x:Name="SearchTextBox"
                          Width="320"
@@ -237,8 +237,8 @@
             <Border x:Name="SidePane"
                     Grid.Column="0"
                     Width="210"
-                    Background="#FBFBF8"
-                    BorderBrush="#D8D8D2"
+                    Background="{StaticResource PanelBackgroundBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="0,0,1,0"
                     Visibility="Collapsed">
                 <Grid>
@@ -258,7 +258,7 @@
                         <TextBlock VerticalAlignment="Center"
                                    FontSize="14"
                                    FontWeight="SemiBold"
-                                   Foreground="#242420"
+                                   Foreground="{StaticResource PrimaryTextBrush}"
                                    Text="Document" />
                     </DockPanel>
 
@@ -276,7 +276,7 @@
                                            Margin="18"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"
-                                           Foreground="#6B6B64"
+                                           Foreground="{StaticResource MutedTextBrush}"
                                            Text="No bookmarks yet."
                                            TextAlignment="Center" />
                             </Grid>
@@ -299,7 +299,7 @@
                                                Margin="18"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"
-                                               Foreground="#6B6B64"
+                                               Foreground="{StaticResource MutedTextBrush}"
                                                Text="No notes yet."
                                                TextAlignment="Center" />
                                 </Grid>
@@ -335,7 +335,7 @@
                 <ScrollViewer x:Name="DocumentScrollViewer"
                               HorizontalScrollBarVisibility="Auto"
                               VerticalScrollBarVisibility="Auto"
-                              Background="#E8E8E2"
+                              Background="#121418"
                               SizeChanged="DocumentScrollViewer_SizeChanged">
                     <Grid MinHeight="420">
                         <Border x:Name="PageHost"
@@ -346,8 +346,9 @@
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Top"
                                 Background="White"
-                                BorderBrush="#CFCFC8"
-                                BorderThickness="1">
+                                BorderBrush="#555A62"
+                                BorderThickness="1"
+                                CornerRadius="2">
                             <Grid>
                                 <Image x:Name="PageImage"
                                        Stretch="Uniform"
@@ -360,30 +361,34 @@
                         <TextBlock x:Name="EmptyStateText"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
-                                   Foreground="#66665F"
+                                   Foreground="{StaticResource MutedTextBrush}"
                                    FontSize="17"
                                    Text="Open a PDF to start reading." />
                     </Grid>
                 </ScrollViewer>
 
                 <Border x:Name="LoadingOverlay"
-                        Background="#88F4F4F1"
+                        Background="#B317191D"
                         Visibility="Collapsed">
-                    <TextBlock HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               Padding="14,8"
-                               Background="#FBFBF8"
-                               Foreground="#242420"
-                               Text="Opening PDF..." />
+                    <Border HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Padding="14,8"
+                            Background="{StaticResource PanelRaisedBrush}"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4">
+                        <TextBlock Foreground="{StaticResource PrimaryTextBrush}"
+                                   Text="Opening PDF..." />
+                    </Border>
                 </Border>
             </Grid>
         </Grid>
 
-        <Border Grid.Row="3" Background="#FBFBF8" BorderBrush="#D8D8D2" BorderThickness="0,1,0,0">
+        <Border Grid.Row="3" Background="{StaticResource PanelBackgroundBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
             <TextBlock x:Name="StatusText"
                        Margin="10,0"
                        VerticalAlignment="Center"
-                       Foreground="#595952"
+                       Foreground="{StaticResource MutedTextBrush}"
                        TextTrimming="CharacterEllipsis"
                        Text="Ready" />
         </Border>

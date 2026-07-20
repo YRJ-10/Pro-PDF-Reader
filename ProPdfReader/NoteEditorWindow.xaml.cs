@@ -8,6 +8,7 @@ public partial class NoteEditorWindow : Window
     public NoteEditorWindow(string selectedText, string initialText = "", bool isEditing = false)
     {
         InitializeComponent();
+        WindowTheme.ApplyDarkTitleBar(this);
         Title = isEditing ? "Edit note" : "Add note";
         SelectedTextPreview.Text = selectedText;
         NoteTextBox.Text = initialText;

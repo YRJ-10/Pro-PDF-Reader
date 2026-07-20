@@ -62,6 +62,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        WindowTheme.ApplyDarkTitleBar(this);
         _stateSaveTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(750)
@@ -630,6 +631,42 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void Window_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (_document is null || e.Delta == 0)
+        {
+            return;
+        }
+
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            ChangeZoom(e.Delta > 0 ? ZoomStep : -ZoomStep);
+            e.Handled = true;
+            return;
+        }
+
+        if (!DocumentScrollViewer.IsMouseOver || _isBusy || _isNavigating)
+        {
+            return;
+        }
+
+        const double edgeTolerance = 1;
+        var reachedBottom = DocumentScrollViewer.VerticalOffset >=
+                            DocumentScrollViewer.ScrollableHeight - edgeTolerance;
+        var reachedTop = DocumentScrollViewer.VerticalOffset <= edgeTolerance;
+
+        if (e.Delta < 0 && reachedBottom)
+        {
+            e.Handled = true;
+            await NavigateFromDocumentEdgeAsync(1, scrollToEnd: false);
+        }
+        else if (e.Delta > 0 && reachedTop)
+        {
+            e.Handled = true;
+            await NavigateFromDocumentEdgeAsync(-1, scrollToEnd: true);
+        }
+    }
+
     private void ChangeZoom(double delta)
     {
         if (_document is null)
@@ -768,8 +805,15 @@ public partial class MainWindow : Window
         _isUpdatingZoom = true;
         try
         {
-            ZoomModeComboBox.SelectedItem = null;
-            ZoomModeComboBox.Text = $"{_zoomFactor * 100:0}%";
+            ZoomModeComboBox.SelectedItem = ZoomModeComboBox.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item =>
+                    double.TryParse(
+                        item.Tag?.ToString(),
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out var factor) &&
+                    Math.Abs(factor - _zoomFactor) < 0.001);
         }
         finally
         {
@@ -794,6 +838,45 @@ public partial class MainWindow : Window
         await NavigateToPageAsync((uint)targetPage);
     }
 
+    private async Task NavigateFromDocumentEdgeAsync(int direction, bool scrollToEnd)
+    {
+        var previousPage = _currentPageIndex;
+        await NavigateAsync(direction);
+        if (_currentPageIndex == previousPage)
+        {
+            return;
+        }
+
+        await Dispatcher.InvokeAsync(DocumentScrollViewer.UpdateLayout, DispatcherPriority.Loaded);
+        if (scrollToEnd)
+        {
+            DocumentScrollViewer.ScrollToEnd();
+        }
+        else
+        {
+            DocumentScrollViewer.ScrollToTop();
+        }
+    }
+
+    private async Task ScrollOrNavigateAsync(int direction)
+    {
+        const double edgeTolerance = 1;
+        if (direction > 0 &&
+            DocumentScrollViewer.VerticalOffset < DocumentScrollViewer.ScrollableHeight - edgeTolerance)
+        {
+            DocumentScrollViewer.PageDown();
+            return;
+        }
+
+        if (direction < 0 && DocumentScrollViewer.VerticalOffset > edgeTolerance)
+        {
+            DocumentScrollViewer.PageUp();
+            return;
+        }
+
+        await NavigateFromDocumentEdgeAsync(direction, scrollToEnd: direction < 0);
+    }
+
     private async Task NavigateToPageAsync(uint targetPage)
     {
         var document = _document;
@@ -816,6 +899,7 @@ public partial class MainWindow : Window
 
             if (generation == _documentGeneration)
             {
+                DocumentScrollViewer.ScrollToTop();
                 var elapsed = Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
                 SetStatus($"Page {_currentPageIndex + 1} ready in {elapsed:0} ms | {_currentPath}");
                 QueueStateSave();
@@ -840,6 +924,25 @@ public partial class MainWindow : Window
         if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.O)
         {
             await OpenPdfFromDialogAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.S)
+        {
+            _stateSaveTimer.Stop();
+            if (await SaveCurrentStateAsync(reportFailure: true))
+            {
+                SetStatus("Bookmarks, highlights, notes, and reading position saved locally.");
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.W)
+        {
+            Close();
             e.Handled = true;
             return;
         }
@@ -920,10 +1023,50 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key is Key.Home or Key.End)
+        {
+            var document = _document;
+            if (document is not null)
+            {
+                var targetPage = e.Key == Key.Home ? 0u : document.PageCount - 1;
+                await NavigateToPageAsync(targetPage);
+                DocumentScrollViewer.ScrollToTop();
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (Keyboard.Modifiers == ModifierKeys.None && e.Key is Key.Home or Key.End)
+        {
+            if (e.Key == Key.Home)
+            {
+                DocumentScrollViewer.ScrollToTop();
+            }
+            else
+            {
+                DocumentScrollViewer.ScrollToEnd();
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key is Key.PageUp or Key.PageDown or Key.Space)
+        {
+            var scrollDirection = e.Key == Key.PageUp ||
+                                  (e.Key == Key.Space && Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+                ? -1
+                : 1;
+            e.Handled = true;
+            await ScrollOrNavigateAsync(scrollDirection);
+            return;
+        }
+
         var direction = e.Key switch
         {
-            Key.Left or Key.PageUp => -1,
-            Key.Right or Key.PageDown or Key.Space => 1,
+            Key.Left => -1,
+            Key.Right => 1,
             _ => 0
         };
 
@@ -1673,17 +1816,18 @@ public partial class MainWindow : Window
         await SaveCurrentStateAsync(reportFailure: true);
     }
 
-    private async Task SaveCurrentStateAsync(bool reportFailure)
+    private async Task<bool> SaveCurrentStateAsync(bool reportFailure)
     {
         var state = _documentState;
         if (state is null)
         {
-            return;
+            return false;
         }
 
         try
         {
             await _stateStore.SaveAsync(state);
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -1691,6 +1835,8 @@ public partial class MainWindow : Window
             {
                 SetStatus($"Could not save reading position: {ex.Message}");
             }
+
+            return false;
         }
     }
 

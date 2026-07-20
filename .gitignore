@@ -9,4 +9,5 @@ obj/
 TestResults/
 publish/
 artifacts/
+tmp/
 *.nupkg

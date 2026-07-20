@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Dark interface with compact rounded controls and a native dark title bar.
+- Ctrl+mouse wheel zoom, local-state save, document edge navigation, and common reading shortcuts.
+
+### Fixed
+
+- Continue to the next or previous page by scrolling beyond the current page edge.
+
 ## 1.0.0 - 2026-07-20
 
 ### Added
