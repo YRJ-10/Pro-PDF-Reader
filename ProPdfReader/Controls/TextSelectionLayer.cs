@@ -13,23 +13,38 @@ public sealed class TextSelectionLayer : FrameworkElement
 {
     private static readonly Brush SelectionBrush = new SolidColorBrush(Color.FromArgb(105, 48, 116, 214));
     private static readonly Brush HighlightBrush = new SolidColorBrush(Color.FromArgb(105, 255, 210, 35));
+    private static readonly Brush NoteMarkerBrush = new SolidColorBrush(Color.FromRgb(224, 112, 62));
+    private static readonly Pen NoteUnderlinePen = new(new SolidColorBrush(Color.FromRgb(224, 112, 62)), 2);
+    private static readonly Pen NoteMarkerPen = new(new SolidColorBrush(Color.FromRgb(142, 68, 38)), 1);
+    private static readonly Pen NoteMarkerTextPen = new(Brushes.White, 1);
 
     private readonly MenuItem _copyMenuItem;
     private readonly MenuItem _highlightMenuItem;
+    private readonly MenuItem _addNoteMenuItem;
+    private readonly MenuItem _editNoteMenuItem;
+    private readonly MenuItem _removeNoteMenuItem;
     private readonly MenuItem _removeHighlightMenuItem;
     private PageText? _page;
     private IReadOnlyList<HighlightState> _highlights = [];
+    private IReadOnlyList<NoteState> _notes = [];
     private double _pageWidth;
     private double _pageHeight;
     private int _selectionAnchor = -1;
     private int _selectionEnd = -1;
     private Guid? _contextHighlightId;
+    private Guid? _contextNoteId;
 
     internal event Action? SelectionChanged;
 
     internal event Action? HighlightRequested;
 
     internal event Action<Guid>? HighlightRemovalRequested;
+
+    internal event Action? NoteRequested;
+
+    internal event Action<Guid>? NoteEditRequested;
+
+    internal event Action<Guid>? NoteRemovalRequested;
 
     public TextSelectionLayer()
     {
@@ -41,6 +56,27 @@ public sealed class TextSelectionLayer : FrameworkElement
 
         _highlightMenuItem = new MenuItem { Header = "Highlight selection" };
         _highlightMenuItem.Click += (_, _) => HighlightRequested?.Invoke();
+
+        _addNoteMenuItem = new MenuItem { Header = "Add note" };
+        _addNoteMenuItem.Click += (_, _) => NoteRequested?.Invoke();
+
+        _editNoteMenuItem = new MenuItem { Header = "Edit note" };
+        _editNoteMenuItem.Click += (_, _) =>
+        {
+            if (_contextNoteId is Guid noteId)
+            {
+                NoteEditRequested?.Invoke(noteId);
+            }
+        };
+
+        _removeNoteMenuItem = new MenuItem { Header = "Remove note" };
+        _removeNoteMenuItem.Click += (_, _) =>
+        {
+            if (_contextNoteId is Guid noteId)
+            {
+                NoteRemovalRequested?.Invoke(noteId);
+            }
+        };
 
         _removeHighlightMenuItem = new MenuItem { Header = "Remove highlight" };
         _removeHighlightMenuItem.Click += (_, _) =>
@@ -60,6 +96,9 @@ public sealed class TextSelectionLayer : FrameworkElement
             {
                 _copyMenuItem,
                 _highlightMenuItem,
+                _addNoteMenuItem,
+                _editNoteMenuItem,
+                _removeNoteMenuItem,
                 _removeHighlightMenuItem,
                 new Separator(),
                 selectAllMenuItem
@@ -81,11 +120,13 @@ public sealed class TextSelectionLayer : FrameworkElement
     internal void SetPageGeometry(
         double pageWidth,
         double pageHeight,
-        IReadOnlyList<HighlightState> highlights)
+        IReadOnlyList<HighlightState> highlights,
+        IReadOnlyList<NoteState> notes)
     {
         _pageWidth = pageWidth;
         _pageHeight = pageHeight;
         _highlights = highlights;
+        _notes = notes;
         InvalidateVisual();
     }
 
@@ -95,10 +136,17 @@ public sealed class TextSelectionLayer : FrameworkElement
         InvalidateVisual();
     }
 
+    internal void SetNotes(IReadOnlyList<NoteState> notes)
+    {
+        _notes = notes;
+        InvalidateVisual();
+    }
+
     public void ClearPage()
     {
         _page = null;
         _highlights = [];
+        _notes = [];
         _pageWidth = 0;
         _pageHeight = 0;
         ClearSelection();
@@ -120,6 +168,29 @@ public sealed class TextSelectionLayer : FrameworkElement
             {
                 drawingContext.DrawRectangle(HighlightBrush, null, GetHighlightBounds(rectangle));
             }
+        }
+
+        foreach (var note in _notes)
+        {
+            foreach (var anchor in note.Anchors)
+            {
+                var bounds = GetHighlightBounds(anchor);
+                drawingContext.DrawLine(
+                    NoteUnderlinePen,
+                    new Point(bounds.Left, bounds.Bottom - 1),
+                    new Point(bounds.Right, bounds.Bottom - 1));
+            }
+
+            var markerBounds = GetNoteMarkerBounds(note);
+            drawingContext.DrawRectangle(NoteMarkerBrush, NoteMarkerPen, markerBounds);
+            drawingContext.DrawLine(
+                NoteMarkerTextPen,
+                new Point(markerBounds.Left + 3, markerBounds.Top + 5),
+                new Point(markerBounds.Right - 3, markerBounds.Top + 5));
+            drawingContext.DrawLine(
+                NoteMarkerTextPen,
+                new Point(markerBounds.Left + 3, markerBounds.Top + 8),
+                new Point(markerBounds.Right - 5, markerBounds.Top + 8));
         }
 
         if (_page is null || !HasSelection)
@@ -385,8 +456,16 @@ public sealed class TextSelectionLayer : FrameworkElement
     {
         _copyMenuItem.IsEnabled = HasSelection;
         _highlightMenuItem.IsEnabled = HasSelection;
+        _addNoteMenuItem.IsEnabled = HasSelection;
         _contextHighlightId = HitTestHighlight(Mouse.GetPosition(this));
+        _contextNoteId = HitTestNote(Mouse.GetPosition(this));
         _removeHighlightMenuItem.Visibility = _contextHighlightId.HasValue
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        _editNoteMenuItem.Visibility = _contextNoteId.HasValue
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        _removeNoteMenuItem.Visibility = _contextNoteId.HasValue
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
@@ -403,6 +482,35 @@ public sealed class TextSelectionLayer : FrameworkElement
         }
 
         return null;
+    }
+
+    private Guid? HitTestNote(Point point)
+    {
+        for (var noteIndex = _notes.Count - 1; noteIndex >= 0; noteIndex--)
+        {
+            var note = _notes[noteIndex];
+            if (GetNoteMarkerBounds(note).Contains(point) ||
+                note.Anchors.Any(anchor => GetHighlightBounds(anchor).Contains(point)))
+            {
+                return note.Id;
+            }
+        }
+
+        return null;
+    }
+
+    private Rect GetNoteMarkerBounds(NoteState note)
+    {
+        if (note.Anchors.Count == 0)
+        {
+            return Rect.Empty;
+        }
+
+        const double markerSize = 13;
+        var anchorBounds = GetHighlightBounds(note.Anchors[0]);
+        var left = Math.Clamp(anchorBounds.Right + 4, 0, Math.Max(0, ActualWidth - markerSize));
+        var top = Math.Clamp(anchorBounds.Top - 2, 0, Math.Max(0, ActualHeight - markerSize));
+        return new Rect(left, top, markerSize, markerSize);
     }
 
     private static HighlightRectangle CreateRectangle(PageWord word)

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -32,6 +33,7 @@ public partial class MainWindow : Window
     private bool _isNavigating;
     private bool _isBusy;
     private bool _isUpdatingBookmarks;
+    private bool _isUpdatingNotes;
     private PdfTextService? _textService;
     private DocumentState? _documentState;
 
@@ -46,6 +48,9 @@ public partial class MainWindow : Window
         TextSelectionLayer.SelectionChanged += UpdateDocumentToolState;
         TextSelectionLayer.HighlightRequested += AddHighlightFromSelection;
         TextSelectionLayer.HighlightRemovalRequested += RemoveHighlight;
+        TextSelectionLayer.NoteRequested += AddNoteFromSelection;
+        TextSelectionLayer.NoteEditRequested += EditNote;
+        TextSelectionLayer.NoteRemovalRequested += RemoveNote;
         UpdateNavigationState();
     }
 
@@ -89,10 +94,12 @@ public partial class MainWindow : Window
             _documentState.LastOpenedUtc = DateTime.UtcNow;
             _documentState.BookmarkedPages.RemoveAll(pageIndex => pageIndex >= document.PageCount);
             _documentState.Highlights.RemoveAll(highlight => highlight.PageIndex >= document.PageCount);
+            _documentState.Notes.RemoveAll(note => note.PageIndex >= document.PageCount);
 
             FileNameText.Text = Path.GetFileName(path);
             EmptyStateText.Visibility = Visibility.Collapsed;
             RefreshBookmarksList();
+            RefreshNotesList();
 
             await RenderCurrentPageAsync(generation);
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
@@ -133,6 +140,7 @@ public partial class MainWindow : Window
         _documentState = null;
         TextSelectionLayer.ClearPage();
         RefreshBookmarksList();
+        RefreshNotesList();
 
         if (previousTextService is not null)
         {
@@ -172,7 +180,8 @@ public partial class MainWindow : Window
         TextSelectionLayer.SetPageGeometry(
             renderedPage.Width,
             renderedPage.Height,
-            GetCurrentPageHighlights());
+            GetCurrentPageHighlights(),
+            GetCurrentPageNotes());
         UpdateNavigationState();
     }
 
@@ -449,6 +458,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.N)
+        {
+            AddNoteFromSelection();
+            e.Handled = true;
+            return;
+        }
+
         var direction = e.Key switch
         {
             Key.Left or Key.PageUp => -1,
@@ -497,19 +513,31 @@ public partial class MainWindow : Window
 
     private void BookmarksPaneButton_Click(object sender, RoutedEventArgs e)
     {
-        BookmarksPane.Visibility = BookmarksPane.Visibility == Visibility.Visible
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        ShowSidePane(tabIndex: 0);
+    }
 
-        if (BookmarksPane.Visibility == Visibility.Visible)
+    private void NotesPaneButton_Click(object sender, RoutedEventArgs e)
+    {
+        ShowSidePane(tabIndex: 1);
+    }
+
+    private void ShowSidePane(int tabIndex)
+    {
+        var isCurrentTabVisible = SidePane.Visibility == Visibility.Visible &&
+                                  SidePaneTabs.SelectedIndex == tabIndex;
+        SidePane.Visibility = isCurrentTabVisible ? Visibility.Collapsed : Visibility.Visible;
+        SidePaneTabs.SelectedIndex = tabIndex;
+
+        if (SidePane.Visibility == Visibility.Visible)
         {
             RefreshBookmarksList();
+            RefreshNotesList();
         }
     }
 
-    private void CloseBookmarksPaneButton_Click(object sender, RoutedEventArgs e)
+    private void CloseSidePaneButton_Click(object sender, RoutedEventArgs e)
     {
-        BookmarksPane.Visibility = Visibility.Collapsed;
+        SidePane.Visibility = Visibility.Collapsed;
     }
 
     private void BookmarkPageButton_Click(object sender, RoutedEventArgs e)
@@ -646,10 +674,221 @@ public partial class MainWindow : Window
         SetStatus($"Removed highlight from page {_currentPageIndex + 1}.");
     }
 
+    private void NoteButton_Click(object sender, RoutedEventArgs e)
+    {
+        AddNoteFromSelection();
+    }
+
+    private void AddNoteFromSelection()
+    {
+        var selection = TextSelectionLayer.GetSelection();
+        if (_documentState is null || selection is null || _isBusy || _isNavigating)
+        {
+            return;
+        }
+
+        var editor = new NoteEditorWindow(selection.Text)
+        {
+            Owner = this
+        };
+
+        if (editor.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var note = new NoteState
+        {
+            PageIndex = _currentPageIndex,
+            Text = editor.NoteText,
+            SelectedText = selection.Text,
+            Anchors = selection.Rectangles.ToList()
+        };
+        _documentState.Notes.Add(note);
+
+        TextSelectionLayer.SetNotes(GetCurrentPageNotes());
+        TextSelectionLayer.ClearSelection();
+        RefreshNotesList(note.Id);
+        SidePane.Visibility = Visibility.Visible;
+        SidePaneTabs.SelectedIndex = 1;
+        QueueStateSave();
+        SetStatus($"Added note on page {_currentPageIndex + 1}.");
+    }
+
+    private void EditNoteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetSelectedNoteId() is Guid noteId)
+        {
+            EditNote(noteId);
+        }
+    }
+
+    private void DeleteNoteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetSelectedNoteId() is Guid noteId)
+        {
+            RemoveNote(noteId);
+        }
+    }
+
+    private void NotesList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (GetSelectedNoteId() is Guid noteId)
+        {
+            EditNote(noteId);
+        }
+    }
+
+    private async void NotesList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        UpdateNoteListButtonState();
+
+        if (_isUpdatingNotes || GetSelectedNoteId() is not Guid noteId || _documentState is null)
+        {
+            return;
+        }
+
+        var note = _documentState.Notes.FirstOrDefault(candidate => candidate.Id == noteId);
+        if (note is not null)
+        {
+            await NavigateToPageAsync(note.PageIndex);
+        }
+    }
+
+    private void EditNote(Guid noteId)
+    {
+        var note = _documentState?.Notes.FirstOrDefault(candidate => candidate.Id == noteId);
+        if (note is null)
+        {
+            return;
+        }
+
+        var editor = new NoteEditorWindow(note.SelectedText, note.Text, isEditing: true)
+        {
+            Owner = this
+        };
+
+        if (editor.ShowDialog() != true)
+        {
+            return;
+        }
+
+        note.Text = editor.NoteText;
+        note.UpdatedUtc = DateTime.UtcNow;
+        RefreshNotesList(note.Id);
+        QueueStateSave();
+        SetStatus($"Updated note on page {note.PageIndex + 1}.");
+    }
+
+    private void RemoveNote(Guid noteId)
+    {
+        if (_documentState is null)
+        {
+            return;
+        }
+
+        var note = _documentState.Notes.FirstOrDefault(candidate => candidate.Id == noteId);
+        if (note is null)
+        {
+            return;
+        }
+
+        _documentState.Notes.Remove(note);
+        TextSelectionLayer.SetNotes(GetCurrentPageNotes());
+        RefreshNotesList();
+        QueueStateSave();
+        SetStatus($"Removed note from page {note.PageIndex + 1}.");
+    }
+
+    private void RefreshNotesList(Guid? selectedNoteId = null)
+    {
+        _isUpdatingNotes = true;
+        try
+        {
+            NotesList.Items.Clear();
+
+            if (_documentState is not null)
+            {
+                foreach (var note in _documentState.Notes.OrderBy(note => note.PageIndex).ThenByDescending(note => note.UpdatedUtc))
+                {
+                    var content = new StackPanel();
+                    content.Children.Add(new TextBlock
+                    {
+                        Text = $"Page {note.PageIndex + 1}",
+                        FontSize = 11,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = System.Windows.Media.Brushes.DimGray
+                    });
+                    content.Children.Add(new TextBlock
+                    {
+                        Text = note.Text,
+                        Margin = new Thickness(0, 3, 0, 0),
+                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        ToolTip = note.Text
+                    });
+                    content.Children.Add(new TextBlock
+                    {
+                        Text = note.SelectedText,
+                        Margin = new Thickness(0, 3, 0, 0),
+                        FontSize = 11,
+                        FontStyle = FontStyles.Italic,
+                        Foreground = System.Windows.Media.Brushes.Gray,
+                        TextTrimming = TextTrimming.CharacterEllipsis
+                    });
+
+                    var item = new System.Windows.Controls.ListBoxItem
+                    {
+                        Content = content,
+                        Tag = note.Id,
+                        Padding = new Thickness(8),
+                        HorizontalContentAlignment = HorizontalAlignment.Stretch
+                    };
+                    NotesList.Items.Add(item);
+
+                    if (note.Id == selectedNoteId)
+                    {
+                        NotesList.SelectedItem = item;
+                    }
+                }
+            }
+
+            EmptyNotesText.Visibility = NotesList.Items.Count == 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+        finally
+        {
+            _isUpdatingNotes = false;
+        }
+
+        UpdateNoteListButtonState();
+    }
+
+    private Guid? GetSelectedNoteId()
+    {
+        return NotesList.SelectedItem is System.Windows.Controls.ListBoxItem { Tag: Guid noteId }
+            ? noteId
+            : null;
+    }
+
+    private void UpdateNoteListButtonState()
+    {
+        var canEditSelectedNote = !_isBusy && !_isNavigating && GetSelectedNoteId().HasValue;
+        EditNoteButton.IsEnabled = canEditSelectedNote;
+        DeleteNoteButton.IsEnabled = canEditSelectedNote;
+    }
+
     private IReadOnlyList<HighlightState> GetCurrentPageHighlights()
     {
         return _documentState?.Highlights
             .Where(highlight => highlight.PageIndex == _currentPageIndex)
+            .ToArray() ?? [];
+    }
+
+    private IReadOnlyList<NoteState> GetCurrentPageNotes()
+    {
+        return _documentState?.Notes
+            .Where(note => note.PageIndex == _currentPageIndex)
             .ToArray() ?? [];
     }
 
@@ -659,6 +898,9 @@ public partial class MainWindow : Window
         BookmarksPaneButton.IsEnabled = canUseDocumentTools;
         BookmarkPageButton.IsEnabled = canUseDocumentTools;
         HighlightButton.IsEnabled = canUseDocumentTools && TextSelectionLayer.HasSelection;
+        NoteButton.IsEnabled = canUseDocumentTools && TextSelectionLayer.HasSelection;
+        NotesPaneButton.IsEnabled = canUseDocumentTools;
+        UpdateNoteListButtonState();
 
         var isBookmarked = _documentState?.BookmarkedPages.Contains(_currentPageIndex) == true;
         BookmarkPageButton.Content = isBookmarked ? "\uE735" : "\uE734";

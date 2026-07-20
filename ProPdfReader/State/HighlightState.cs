@@ -30,14 +30,18 @@ internal sealed class HighlightState
         Rectangles ??= [];
         Rectangles = Rectangles
             .Where(rectangle => rectangle is not null)
-            .Where(rectangle =>
-                double.IsFinite(rectangle.Left) &&
-                double.IsFinite(rectangle.Bottom) &&
-                double.IsFinite(rectangle.Right) &&
-                double.IsFinite(rectangle.Top) &&
-                rectangle.Right > rectangle.Left &&
-                rectangle.Top > rectangle.Bottom)
+            .Where(IsValidRectangle)
             .ToList();
+    }
+
+    internal static bool IsValidRectangle(HighlightRectangle rectangle)
+    {
+        return double.IsFinite(rectangle.Left) &&
+               double.IsFinite(rectangle.Bottom) &&
+               double.IsFinite(rectangle.Right) &&
+               double.IsFinite(rectangle.Top) &&
+               rectangle.Right > rectangle.Left &&
+               rectangle.Top > rectangle.Bottom;
     }
 }
 

@@ -71,6 +71,22 @@
                             Click="HighlightButton_Click"
                             Content="Highlight"
                             ToolTip="Highlight selected text" />
+                    <Button x:Name="NoteButton"
+                            Width="58"
+                            Height="30"
+                            Margin="4,0,0,0"
+                            Click="NoteButton_Click"
+                            Content="Note"
+                            ToolTip="Add note to selected text" />
+                    <Button x:Name="NotesPaneButton"
+                            Width="34"
+                            Height="30"
+                            Margin="4,0,0,0"
+                            Click="NotesPaneButton_Click"
+                            Content="&#xE90A;"
+                            FontFamily="Segoe MDL2 Assets"
+                            FontSize="14"
+                            ToolTip="Show notes" />
                 </StackPanel>
 
                 <TextBlock x:Name="FileNameText"
@@ -88,7 +104,7 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Border x:Name="BookmarksPane"
+            <Border x:Name="SidePane"
                     Grid.Column="0"
                     Width="210"
                     Background="#FBFBF8"
@@ -105,30 +121,83 @@
                         <Button DockPanel.Dock="Right"
                                 Width="30"
                                 Height="30"
-                                Click="CloseBookmarksPaneButton_Click"
+                                Click="CloseSidePaneButton_Click"
                                 Content="&#xE711;"
                                 FontFamily="Segoe MDL2 Assets"
-                                ToolTip="Close bookmarks" />
+                                ToolTip="Close side panel" />
                         <TextBlock VerticalAlignment="Center"
                                    FontSize="14"
                                    FontWeight="SemiBold"
                                    Foreground="#242420"
-                                   Text="Bookmarks" />
+                                   Text="Document" />
                     </DockPanel>
 
-                    <Grid Grid.Row="1">
-                        <ListBox x:Name="BookmarksList"
-                                 BorderThickness="0"
-                                 Background="Transparent"
-                                 SelectionChanged="BookmarksList_SelectionChanged" />
-                        <TextBlock x:Name="EmptyBookmarksText"
-                                   Margin="18"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   Foreground="#6B6B64"
-                                   Text="No bookmarks yet."
-                                   TextAlignment="Center" />
-                    </Grid>
+                    <TabControl x:Name="SidePaneTabs"
+                                Grid.Row="1"
+                                BorderThickness="0,1,0,0"
+                                Background="Transparent">
+                        <TabItem Header="Bookmarks">
+                            <Grid>
+                                <ListBox x:Name="BookmarksList"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         SelectionChanged="BookmarksList_SelectionChanged" />
+                                <TextBlock x:Name="EmptyBookmarksText"
+                                           Margin="18"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="#6B6B64"
+                                           Text="No bookmarks yet."
+                                           TextAlignment="Center" />
+                            </Grid>
+                        </TabItem>
+
+                        <TabItem Header="Notes">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="42" />
+                                </Grid.RowDefinitions>
+
+                                <Grid Grid.Row="0">
+                                    <ListBox x:Name="NotesList"
+                                             BorderThickness="0"
+                                             Background="Transparent"
+                                             MouseDoubleClick="NotesList_MouseDoubleClick"
+                                             SelectionChanged="NotesList_SelectionChanged" />
+                                    <TextBlock x:Name="EmptyNotesText"
+                                               Margin="18"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Foreground="#6B6B64"
+                                               Text="No notes yet."
+                                               TextAlignment="Center" />
+                                </Grid>
+
+                                <StackPanel Grid.Row="1"
+                                            Margin="8,0"
+                                            HorizontalAlignment="Right"
+                                            Orientation="Horizontal"
+                                            VerticalAlignment="Center">
+                                    <Button x:Name="EditNoteButton"
+                                            Width="32"
+                                            Height="30"
+                                            Click="EditNoteButton_Click"
+                                            Content="&#xE70F;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            ToolTip="Edit selected note" />
+                                    <Button x:Name="DeleteNoteButton"
+                                            Width="32"
+                                            Height="30"
+                                            Margin="4,0,0,0"
+                                            Click="DeleteNoteButton_Click"
+                                            Content="&#xE74D;"
+                                            FontFamily="Segoe MDL2 Assets"
+                                            ToolTip="Delete selected note" />
+                                </StackPanel>
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
                 </Grid>
             </Border>
 

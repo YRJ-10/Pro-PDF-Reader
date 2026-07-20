@@ -45,6 +45,15 @@ Pro PDF Reader is a lightweight Windows PDF reader focused on fast startup and a
 - Remove a highlight from its page context menu.
 - Migrate phase 4 state files forward without losing the last reading position.
 
+## Phase 6 scope
+
+- Attach a local note to selected PDF text.
+- Show note anchors and compact markers directly on the page.
+- Browse notes in a dedicated side-panel tab.
+- Jump to a note's source page.
+- Edit or remove notes from the panel or page context menu.
+- Migrate older local state to schema 3 without losing reading data.
+
 ## Performance direction
 
 The first target metric is time-to-first-page:
@@ -62,6 +71,8 @@ Phase 3 keeps text extraction off the time-to-first-page path. Image-only or sca
 Phase 4 state is stored under `%LocalAppData%\ProPdfReader\state\v1`. It remains local to the Windows account and never changes the source PDF.
 
 Bookmarks and highlights use the same local state file. Ctrl+D toggles a page bookmark, while Ctrl+Shift+H highlights the current text selection.
+
+Ctrl+Shift+N adds a note to the current text selection. Notes remain local and are included in the same atomic document-state file.
 
 ## Development
 

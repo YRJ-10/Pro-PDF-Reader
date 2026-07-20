@@ -50,7 +50,7 @@ internal sealed class DocumentStateStore
                     return CreateFreshState(normalizedPath);
                 }
 
-                if (state.SchemaVersion == 1)
+                if (state.SchemaVersion is 1 or 2)
                 {
                     state.SchemaVersion = DocumentState.CurrentSchemaVersion;
                 }

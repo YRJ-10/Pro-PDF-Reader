@@ -4,7 +4,7 @@ namespace ProPdfReader.State;
 
 internal sealed class DocumentState
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -22,6 +22,8 @@ internal sealed class DocumentState
 
     public List<HighlightState> Highlights { get; set; } = [];
 
+    public List<NoteState> Notes { get; set; } = [];
+
     [JsonIgnore]
     public bool IsWritable { get; set; } = true;
 
@@ -37,6 +39,7 @@ internal sealed class DocumentState
             LastOpenedUtc = LastOpenedUtc,
             BookmarkedPages = [.. BookmarkedPages],
             Highlights = Highlights.Select(highlight => highlight.Snapshot()).ToList(),
+            Notes = Notes.Select(note => note.Snapshot()).ToList(),
             IsWritable = IsWritable
         };
     }
@@ -45,6 +48,7 @@ internal sealed class DocumentState
     {
         BookmarkedPages ??= [];
         Highlights ??= [];
+        Notes ??= [];
 
         BookmarkedPages = BookmarkedPages.Distinct().Order().ToList();
         foreach (var highlight in Highlights.Where(highlight => highlight is not null))
@@ -56,6 +60,18 @@ internal sealed class DocumentState
             .Where(highlight => highlight is not null)
             .Where(highlight => highlight.Id != Guid.Empty)
             .Where(highlight => highlight.Rectangles is not null && highlight.Rectangles.Count > 0)
+            .ToList();
+
+        foreach (var note in Notes.Where(note => note is not null))
+        {
+            note.Normalize();
+        }
+
+        Notes = Notes
+            .Where(note => note is not null)
+            .Where(note => note.Id != Guid.Empty)
+            .Where(note => !string.IsNullOrWhiteSpace(note.Text))
+            .Where(note => note.Anchors is not null && note.Anchors.Count > 0)
             .ToList();
     }
 }
