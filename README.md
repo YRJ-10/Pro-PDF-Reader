@@ -63,6 +63,15 @@ Pro PDF Reader is a lightweight Windows PDF reader focused on fast startup and a
 - Find text on demand with Ctrl+F and move between matches across pages.
 - Keep search indexing lazy so it never delays the first visible page.
 
+## Phase 8 scope
+
+- Add a multi-resolution application and PDF file icon.
+- Publish a self-contained Windows x64 build with ReadyToRun startup optimization.
+- Produce a portable ZIP with registration and removal commands.
+- Produce a per-user installer that does not require administrator access.
+- Register Pro PDF Reader for Open with and the Windows Default Apps UI.
+- Remove application registration cleanly during uninstall.
+
 ## Performance direction
 
 The first target metric is time-to-first-page:
@@ -85,6 +94,8 @@ Ctrl+Shift+N adds a note to the current text selection. Notes remain local and a
 
 Ctrl+F opens document search, Ctrl+L focuses the page number, and Ctrl+0 restores fit-width mode. Search and text extraction remain outside the startup path.
 
+Windows chooses default applications through its own user-controlled Default Apps page. The installer registers Pro PDF Reader as a PDF candidate and can open that page, but it never replaces the current default silently.
+
 ## Development
 
 Build:
@@ -98,3 +109,17 @@ Run:
 ```powershell
 dotnet run --project .\ProPdfReader\ProPdfReader.csproj -- "D:\path\file.pdf"
 ```
+
+Create a self-contained portable ZIP:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build\Publish.ps1 -SkipInstaller
+```
+
+Create both the portable ZIP and installer after installing Inno Setup 6 or 7:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build\Publish.ps1
+```
+
+Release files are written under `artifacts/` and are intentionally ignored by Git. Public releases should be code-signed before distribution; unsigned local builds can trigger a Windows SmartScreen warning.
