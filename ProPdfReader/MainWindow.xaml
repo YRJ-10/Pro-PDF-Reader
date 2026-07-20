@@ -1,0 +1,107 @@
+<Window x:Class="ProPdfReader.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ProPdfReader"
+        mc:Ignorable="d"
+        Title="Pro PDF Reader"
+        MinHeight="520"
+        MinWidth="820"
+        Height="760"
+        Width="1120"
+        Background="#F4F4F1">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="48" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="28" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#FBFBF8" BorderBrush="#D8D8D2" BorderThickness="0,0,0,1">
+            <DockPanel Margin="10,0">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="OpenButton"
+                            Width="82"
+                            Height="30"
+                            Click="OpenButton_Click"
+                            Content="Open" />
+                    <Button x:Name="PreviousButton"
+                            Width="34"
+                            Height="30"
+                            Margin="12,0,0,0"
+                            Click="PreviousButton_Click"
+                            Content="&lt;" />
+                    <TextBlock x:Name="PageStatusText"
+                               MinWidth="84"
+                               Margin="10,0"
+                               VerticalAlignment="Center"
+                               Text="No file"
+                               TextAlignment="Center"
+                               Foreground="#3B3B37" />
+                    <Button x:Name="NextButton"
+                            Width="34"
+                            Height="30"
+                            Click="NextButton_Click"
+                            Content="&gt;" />
+                </StackPanel>
+
+                <TextBlock x:Name="FileNameText"
+                           Margin="18,0,0,0"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="#242420"
+                           FontWeight="SemiBold" />
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto"
+                          Background="#E8E8E2">
+                <Grid MinHeight="420">
+                    <Border x:Name="PageHost"
+                            Width="720"
+                            MinHeight="900"
+                            Margin="24"
+                            Padding="0"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Top"
+                            Background="White"
+                            BorderBrush="#CFCFC8"
+                            BorderThickness="1">
+                        <Image x:Name="PageImage"
+                               Stretch="Uniform"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                    </Border>
+
+                    <TextBlock x:Name="EmptyStateText"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Foreground="#66665F"
+                               FontSize="17"
+                               Text="Open a PDF to start reading." />
+                </Grid>
+            </ScrollViewer>
+
+            <Border x:Name="LoadingOverlay"
+                    Background="#88F4F4F1"
+                    Visibility="Collapsed">
+                <TextBlock HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Padding="14,8"
+                           Background="#FBFBF8"
+                           Foreground="#242420"
+                           Text="Opening PDF..." />
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2" Background="#FBFBF8" BorderBrush="#D8D8D2" BorderThickness="0,1,0,0">
+            <TextBlock x:Name="StatusText"
+                       Margin="10,0"
+                       VerticalAlignment="Center"
+                       Foreground="#595952"
+                       Text="Ready" />
+        </Border>
+    </Grid>
+</Window>
