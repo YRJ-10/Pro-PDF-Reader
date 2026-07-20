@@ -8,10 +8,13 @@
 - Ctrl+mouse wheel zoom, local-state save, and common reading shortcuts.
 - Virtualized continuous scrolling with per-page text selection.
 - Internal and external PDF links plus a Contents tab sourced from the document outline.
+- Highlight and underline annotation choices.
+- File menu commands, a thin activity indicator, and a recent-document start screen.
 
 ### Fixed
 
 - Keep one stable scrollbar for the full document instead of resetting it for every page.
+- Keep tooltip text readable against the dark interface.
 
 ## 1.0.0 - 2026-07-20
 

@@ -10,6 +10,8 @@ internal sealed class HighlightState
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
+    public HighlightStyle Style { get; set; }
+
     public List<HighlightRectangle> Rectangles { get; set; } = [];
 
     public HighlightState Snapshot()
@@ -20,6 +22,7 @@ internal sealed class HighlightState
             PageIndex = PageIndex,
             Text = Text,
             CreatedUtc = CreatedUtc,
+            Style = Style,
             Rectangles = Rectangles.Select(rectangle => rectangle with { }).ToList()
         };
     }
@@ -43,6 +46,12 @@ internal sealed class HighlightState
                rectangle.Right > rectangle.Left &&
                rectangle.Top > rectangle.Bottom;
     }
+}
+
+internal enum HighlightStyle
+{
+    Highlight,
+    Underline
 }
 
 internal sealed record HighlightRectangle(

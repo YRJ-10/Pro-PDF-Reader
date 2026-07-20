@@ -64,6 +64,7 @@ public partial class MainWindow : Window
     private ScrollViewer? _documentScrollViewer;
     private PdfPageView? _activePageView;
     private bool _isUpdatingViewportPage;
+    private bool _isUpdatingRecentDocuments;
 
     private TextSelectionLayer TextSelectionLayer => _activePageView?.TextLayer ?? _emptyTextSelectionLayer;
 
@@ -84,6 +85,7 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromMilliseconds(300)
         };
         _qualityRenderTimer.Tick += QualityRenderTimer_Tick;
+        Loaded += MainWindow_Loaded;
         UpdateSearchControls();
         UpdateNavigationState();
     }
@@ -97,6 +99,7 @@ public partial class MainWindow : Window
         }
 
         requestStartedAt = requestStartedAt == 0 ? Stopwatch.GetTimestamp() : requestStartedAt;
+        HomePanel.Visibility = Visibility.Collapsed;
         SetBusy(true);
         _stateSaveTimer.Stop();
         await SaveCurrentStateAsync(reportFailure: false);
@@ -141,7 +144,6 @@ public partial class MainWindow : Window
 
             FileNameText.Text = Path.GetFileName(path);
             Title = $"{Path.GetFileName(path)} - Pro PDF Reader";
-            EmptyStateText.Visibility = Visibility.Collapsed;
             RefreshBookmarksList();
             RefreshNotesList();
             InitializeDocumentPages(document);
@@ -231,8 +233,8 @@ public partial class MainWindow : Window
         ContentsTab.Visibility = Visibility.Collapsed;
         FileNameText.Text = string.Empty;
         Title = "Pro PDF Reader";
-        EmptyStateText.Text = message;
-        EmptyStateText.Visibility = Visibility.Visible;
+        HomeMessageText.Text = message;
+        HomePanel.Visibility = Visibility.Visible;
         SetStatus(message);
     }
 
@@ -442,7 +444,8 @@ public partial class MainWindow : Window
 
         pageView.AttachEvents();
         pageView.SelectionChanged += PageView_SelectionChanged;
-        pageView.HighlightRequested += view => ActivatePageView(view, AddHighlightFromSelection);
+        pageView.HighlightRequested += view => ActivatePageView(view, () => AddHighlightFromSelection(HighlightStyle.Highlight));
+        pageView.UnderlineRequested += view => ActivatePageView(view, () => AddHighlightFromSelection(HighlightStyle.Underline));
         pageView.HighlightRemovalRequested += (view, id) => ActivatePageView(view, () => RemoveHighlight(id));
         pageView.NoteRequested += view => ActivatePageView(view, AddNoteFromSelection);
         pageView.NoteEditRequested += (view, id) => ActivatePageView(view, () => EditNote(id));
@@ -718,6 +721,26 @@ public partial class MainWindow : Window
     private async void OpenButton_Click(object sender, RoutedEventArgs e)
     {
         await OpenPdfFromDialogAsync();
+    }
+
+    private async void HomeOpenButton_Click(object sender, RoutedEventArgs e)
+    {
+        await OpenPdfFromDialogAsync();
+    }
+
+    private async void FileOpenMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        await OpenPdfFromDialogAsync();
+    }
+
+    private async void FileSaveMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        await SaveLocalStateAsync();
+    }
+
+    private void FileCloseMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
     }
 
     private async Task OpenPdfFromDialogAsync()
@@ -1198,11 +1221,7 @@ public partial class MainWindow : Window
 
         if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.S)
         {
-            _stateSaveTimer.Stop();
-            if (await SaveCurrentStateAsync(reportFailure: true))
-            {
-                SetStatus("Bookmarks, highlights, notes, and reading position saved locally.");
-            }
+            await SaveLocalStateAsync();
 
             e.Handled = true;
             return;
@@ -1279,7 +1298,14 @@ public partial class MainWindow : Window
 
         if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.H)
         {
-            AddHighlightFromSelection();
+            AddHighlightFromSelection(HighlightStyle.Highlight);
+            e.Handled = true;
+            return;
+        }
+
+        if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.U)
+        {
+            AddHighlightFromSelection(HighlightStyle.Underline);
             e.Handled = true;
             return;
         }
@@ -1388,14 +1414,23 @@ public partial class MainWindow : Window
     {
         _isBusy = isBusy;
         LoadingOverlay.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
+        UpdateActivityProgress();
         OpenButton.IsEnabled = !isBusy;
         UpdateNavigationState();
     }
 
     private void SetNavigationBusy(bool isBusy)
     {
+        UpdateActivityProgress();
         OpenButton.IsEnabled = !_isBusy && !isBusy;
         UpdateNavigationState();
+    }
+
+    private void UpdateActivityProgress()
+    {
+        ReaderProgressBar.Visibility = _isBusy || _isNavigating || _isSearching
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void SetStatus(string message)
@@ -1500,6 +1535,7 @@ public partial class MainWindow : Window
         _searchCancellation = cancellation;
         var generation = _documentGeneration;
         _isSearching = true;
+        UpdateActivityProgress();
         UpdateSearchControls();
         SearchStatusText.Text = $"Searching 0/{document.PageCount}";
 
@@ -1562,6 +1598,7 @@ public partial class MainWindow : Window
             {
                 _isSearching = false;
                 _searchCancellation = null;
+                UpdateActivityProgress();
                 UpdateSearchControls();
             }
 
@@ -1863,10 +1900,15 @@ public partial class MainWindow : Window
 
     private void HighlightButton_Click(object sender, RoutedEventArgs e)
     {
-        AddHighlightFromSelection();
+        AddHighlightFromSelection(HighlightStyle.Highlight);
     }
 
-    private void AddHighlightFromSelection()
+    private void UnderlineButton_Click(object sender, RoutedEventArgs e)
+    {
+        AddHighlightFromSelection(HighlightStyle.Underline);
+    }
+
+    private void AddHighlightFromSelection(HighlightStyle style)
     {
         var selection = TextSelectionLayer.GetSelection();
         if (_documentState is null || selection is null || _isBusy || _isNavigating)
@@ -1878,13 +1920,15 @@ public partial class MainWindow : Window
         {
             PageIndex = _currentPageIndex,
             Text = selection.Text,
+            Style = style,
             Rectangles = selection.Rectangles.ToList()
         });
 
         TextSelectionLayer.SetHighlights(GetCurrentPageHighlights());
         TextSelectionLayer.ClearSelection();
         QueueStateSave();
-        SetStatus($"Highlighted text on page {_currentPageIndex + 1}.");
+        var annotationName = style == HighlightStyle.Underline ? "Underlined" : "Highlighted";
+        SetStatus($"{annotationName} text on page {_currentPageIndex + 1}.");
     }
 
     private void RemoveHighlight(Guid highlightId)
@@ -2136,9 +2180,11 @@ public partial class MainWindow : Window
     private void UpdateDocumentToolState()
     {
         var canUseDocumentTools = !_isBusy && !_isNavigating && _documentState is not null;
+        FileSaveMenuItem.IsEnabled = canUseDocumentTools;
         BookmarksPaneButton.IsEnabled = canUseDocumentTools;
         BookmarkPageButton.IsEnabled = canUseDocumentTools;
         HighlightButton.IsEnabled = canUseDocumentTools && TextSelectionLayer.HasSelection;
+        UnderlineButton.IsEnabled = canUseDocumentTools && TextSelectionLayer.HasSelection;
         NoteButton.IsEnabled = canUseDocumentTools && TextSelectionLayer.HasSelection;
         NotesPaneButton.IsEnabled = canUseDocumentTools;
         ZoomOutButton.IsEnabled = canUseDocumentTools;
@@ -2194,6 +2240,88 @@ public partial class MainWindow : Window
 
             return false;
         }
+    }
+
+    private async Task SaveLocalStateAsync()
+    {
+        _stateSaveTimer.Stop();
+        if (await SaveCurrentStateAsync(reportFailure: true))
+        {
+            SetStatus("Bookmarks, highlights, notes, and reading position saved locally.");
+        }
+    }
+
+    private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
+        if (_isBusy || _currentPath is not null)
+        {
+            return;
+        }
+
+        await RefreshRecentDocumentsAsync();
+    }
+
+    private async Task RefreshRecentDocumentsAsync()
+    {
+        var recentDocuments = await _stateStore.GetRecentAsync();
+        if (_currentPath is not null)
+        {
+            return;
+        }
+
+        _isUpdatingRecentDocuments = true;
+        try
+        {
+            RecentDocumentsList.Items.Clear();
+            foreach (var document in recentDocuments)
+            {
+                var content = new StackPanel();
+                content.Children.Add(new TextBlock
+                {
+                    Text = Path.GetFileName(document.FilePath),
+                    FontWeight = FontWeights.SemiBold,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                });
+                content.Children.Add(new TextBlock
+                {
+                    Text = Path.GetDirectoryName(document.FilePath),
+                    Margin = new Thickness(0, 3, 0, 0),
+                    FontSize = 11,
+                    Foreground = (Brush)FindResource("MutedTextBrush"),
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                });
+
+                RecentDocumentsList.Items.Add(new ListBoxItem
+                {
+                    Content = content,
+                    Tag = document.FilePath,
+                    Padding = new Thickness(10, 8, 10, 8),
+                    HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                    ToolTip = document.FilePath
+                });
+            }
+
+            EmptyRecentText.Visibility = RecentDocumentsList.Items.Count == 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+        finally
+        {
+            _isUpdatingRecentDocuments = false;
+        }
+    }
+
+    private async void RecentDocumentsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isUpdatingRecentDocuments || _isBusy ||
+            RecentDocumentsList.SelectedItem is not ListBoxItem { Tag: string path })
+        {
+            return;
+        }
+
+        RecentDocumentsList.SelectedItem = null;
+        await OpenPdfAsync(path);
     }
 
     protected override void OnClosed(EventArgs e)

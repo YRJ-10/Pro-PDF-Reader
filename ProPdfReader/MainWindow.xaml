@@ -34,6 +34,23 @@
 
                 <DockPanel Grid.Row="0">
                     <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Menu Margin="0,0,8,0"
+                          VerticalAlignment="Center"
+                          Background="Transparent">
+                        <MenuItem Header="_File">
+                            <MenuItem Header="_Open..."
+                                      InputGestureText="Ctrl+O"
+                                      Click="FileOpenMenuItem_Click" />
+                            <MenuItem x:Name="FileSaveMenuItem"
+                                      Header="_Save local state"
+                                      InputGestureText="Ctrl+S"
+                                      Click="FileSaveMenuItem_Click" />
+                            <Separator />
+                            <MenuItem Header="_Close"
+                                      InputGestureText="Ctrl+W"
+                                      Click="FileCloseMenuItem_Click" />
+                        </MenuItem>
+                    </Menu>
                     <Button x:Name="OpenButton"
                             Width="82"
                             Height="30"
@@ -150,12 +167,21 @@
                             FontSize="14"
                             ToolTip="Bookmark this page" />
                     <Button x:Name="HighlightButton"
-                            Width="76"
+                            Width="34"
                             Height="30"
                             Margin="4,0,0,0"
                             Click="HighlightButton_Click"
-                            Content="Highlight"
-                            ToolTip="Highlight selected text" />
+                            Content="H"
+                            FontWeight="Bold"
+                            ToolTip="Highlight selected text (Ctrl+Shift+H)" />
+                    <Button x:Name="UnderlineButton"
+                            Width="34"
+                            Height="30"
+                            Margin="4,0,0,0"
+                            Click="UnderlineButton_Click"
+                            Content="U"
+                            FontWeight="Bold"
+                            ToolTip="Underline selected text (Ctrl+Shift+U)" />
                     <Button x:Name="NoteButton"
                             Width="58"
                             Height="30"
@@ -341,6 +367,15 @@
             </Border>
 
             <Grid Grid.Column="1">
+                <ProgressBar x:Name="ReaderProgressBar"
+                             Panel.ZIndex="20"
+                             Height="2"
+                             VerticalAlignment="Top"
+                             BorderThickness="0"
+                             Foreground="{StaticResource AccentBrush}"
+                             IsIndeterminate="True"
+                             Visibility="Collapsed" />
+
                 <ListBox x:Name="DocumentPagesList"
                          Background="#121418"
                          BorderThickness="0"
@@ -378,12 +413,51 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <TextBlock x:Name="EmptyStateText"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           Foreground="{StaticResource MutedTextBrush}"
-                           FontSize="17"
-                           Text="Open a PDF to start reading." />
+                <StackPanel x:Name="HomePanel"
+                            Width="440"
+                            MaxHeight="520"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                    <Image Width="54"
+                           Height="54"
+                           HorizontalAlignment="Left"
+                           Source="Assets/ProPdfReader.png" />
+                    <TextBlock Margin="0,14,0,0"
+                               FontSize="26"
+                               FontWeight="SemiBold"
+                               Text="Pro PDF Reader" />
+                    <TextBlock x:Name="HomeMessageText"
+                               Margin="0,6,0,0"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               Text="Fast, private PDF reading on this device."
+                               TextWrapping="Wrap" />
+                    <Button Width="118"
+                            Height="34"
+                            Margin="0,18,0,0"
+                            HorizontalAlignment="Left"
+                            Click="HomeOpenButton_Click"
+                            Content="Open PDF" />
+                    <TextBlock Margin="0,28,0,8"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Text="Recent documents" />
+                    <Border BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4">
+                        <Grid>
+                            <ListBox x:Name="RecentDocumentsList"
+                                     MaxHeight="210"
+                                     BorderThickness="0"
+                                     SelectionChanged="RecentDocumentsList_SelectionChanged" />
+                            <TextBlock x:Name="EmptyRecentText"
+                                       Margin="18"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       Text="No recent PDFs yet." />
+                        </Grid>
+                    </Border>
+                </StackPanel>
 
                 <Border x:Name="LoadingOverlay"
                         Background="#B317191D"

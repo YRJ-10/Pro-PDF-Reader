@@ -13,6 +13,7 @@ public sealed class TextSelectionLayer : FrameworkElement
 {
     private static readonly Brush SelectionBrush = new SolidColorBrush(Color.FromArgb(105, 48, 116, 214));
     private static readonly Brush HighlightBrush = new SolidColorBrush(Color.FromArgb(105, 255, 210, 35));
+    private static readonly Pen UnderlinePen = new(new SolidColorBrush(Color.FromRgb(242, 190, 60)), 2);
     private static readonly Brush NoteMarkerBrush = new SolidColorBrush(Color.FromRgb(224, 112, 62));
     private static readonly Pen NoteUnderlinePen = new(new SolidColorBrush(Color.FromRgb(224, 112, 62)), 2);
     private static readonly Pen NoteMarkerPen = new(new SolidColorBrush(Color.FromRgb(142, 68, 38)), 1);
@@ -20,6 +21,7 @@ public sealed class TextSelectionLayer : FrameworkElement
 
     private readonly MenuItem _copyMenuItem;
     private readonly MenuItem _highlightMenuItem;
+    private readonly MenuItem _underlineMenuItem;
     private readonly MenuItem _addNoteMenuItem;
     private readonly MenuItem _editNoteMenuItem;
     private readonly MenuItem _removeNoteMenuItem;
@@ -41,6 +43,8 @@ public sealed class TextSelectionLayer : FrameworkElement
 
     internal event Action? HighlightRequested;
 
+    internal event Action? UnderlineRequested;
+
     internal event Action<Guid>? HighlightRemovalRequested;
 
     internal event Action? NoteRequested;
@@ -61,6 +65,9 @@ public sealed class TextSelectionLayer : FrameworkElement
 
         _highlightMenuItem = new MenuItem { Header = "Highlight selection" };
         _highlightMenuItem.Click += (_, _) => HighlightRequested?.Invoke();
+
+        _underlineMenuItem = new MenuItem { Header = "Underline selection" };
+        _underlineMenuItem.Click += (_, _) => UnderlineRequested?.Invoke();
 
         _addNoteMenuItem = new MenuItem { Header = "Add note" };
         _addNoteMenuItem.Click += (_, _) => NoteRequested?.Invoke();
@@ -101,6 +108,7 @@ public sealed class TextSelectionLayer : FrameworkElement
             {
                 _copyMenuItem,
                 _highlightMenuItem,
+                _underlineMenuItem,
                 _addNoteMenuItem,
                 _editNoteMenuItem,
                 _removeNoteMenuItem,
@@ -173,7 +181,18 @@ public sealed class TextSelectionLayer : FrameworkElement
         {
             foreach (var rectangle in highlight.Rectangles)
             {
-                drawingContext.DrawRectangle(HighlightBrush, null, GetHighlightBounds(rectangle));
+                var bounds = GetHighlightBounds(rectangle);
+                if (highlight.Style == HighlightStyle.Underline)
+                {
+                    drawingContext.DrawLine(
+                        UnderlinePen,
+                        new Point(bounds.Left, bounds.Bottom - 1),
+                        new Point(bounds.Right, bounds.Bottom - 1));
+                }
+                else
+                {
+                    drawingContext.DrawRectangle(HighlightBrush, null, bounds);
+                }
             }
         }
 
@@ -500,6 +519,7 @@ public sealed class TextSelectionLayer : FrameworkElement
     {
         _copyMenuItem.IsEnabled = HasSelection;
         _highlightMenuItem.IsEnabled = HasSelection;
+        _underlineMenuItem.IsEnabled = HasSelection;
         _addNoteMenuItem.IsEnabled = HasSelection;
         _contextHighlightId = HitTestHighlight(Mouse.GetPosition(this));
         _contextNoteId = HitTestNote(Mouse.GetPosition(this));

@@ -41,6 +41,8 @@ public sealed class PdfPageView : Border
 
     internal event Action<PdfPageView>? HighlightRequested;
 
+    internal event Action<PdfPageView>? UnderlineRequested;
+
     internal event Action<PdfPageView, Guid>? HighlightRemovalRequested;
 
     internal event Action<PdfPageView>? NoteRequested;
@@ -69,6 +71,7 @@ public sealed class PdfPageView : Border
         EventsAttached = true;
         TextLayer.SelectionChanged += () => SelectionChanged?.Invoke(this);
         TextLayer.HighlightRequested += () => HighlightRequested?.Invoke(this);
+        TextLayer.UnderlineRequested += () => UnderlineRequested?.Invoke(this);
         TextLayer.HighlightRemovalRequested += id => HighlightRemovalRequested?.Invoke(this, id);
         TextLayer.NoteRequested += () => NoteRequested?.Invoke(this);
         TextLayer.NoteEditRequested += id => NoteEditRequested?.Invoke(this, id);

@@ -135,6 +135,65 @@ internal sealed class DocumentStateStore
         }
     }
 
+    public async Task<IReadOnlyList<RecentDocument>> GetRecentAsync(int maximumCount = 8)
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (!Directory.Exists(_stateDirectory))
+            {
+                return [];
+            }
+
+            var recent = new List<RecentDocument>();
+            var candidates = new DirectoryInfo(_stateDirectory)
+                .EnumerateFiles("*.json")
+                .OrderByDescending(file => file.LastWriteTimeUtc)
+                .Take(Math.Max(maximumCount * 4, maximumCount));
+
+            foreach (var candidate in candidates)
+            {
+                try
+                {
+                    await using var stream = new FileStream(
+                        candidate.FullName,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.ReadWrite,
+                        bufferSize: 4096,
+                        FileOptions.Asynchronous | FileOptions.SequentialScan);
+                    var state = await JsonSerializer.DeserializeAsync(
+                        stream,
+                        AppJsonSerializerContext.Default.DocumentState).ConfigureAwait(false);
+
+                    if (state is not null &&
+                        File.Exists(state.FilePath) &&
+                        Path.GetExtension(state.FilePath).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+                    {
+                        recent.Add(new RecentDocument(state.FilePath, state.LastOpenedUtc));
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+                {
+                }
+            }
+
+            return recent
+                .DistinctBy(document => document.FilePath, StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(document => document.LastOpenedUtc)
+                .Take(maximumCount)
+                .ToArray();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private string GetStatePath(string normalizedPath)
     {
         var pathBytes = Encoding.UTF8.GetBytes(normalizedPath.ToUpperInvariant());
@@ -185,3 +244,5 @@ internal sealed class DocumentStateStore
         }
     }
 }
+
+internal sealed record RecentDocument(string FilePath, DateTime LastOpenedUtc);

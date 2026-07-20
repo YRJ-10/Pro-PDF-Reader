@@ -89,6 +89,14 @@ Pro PDF Reader is a lightweight Windows PDF reader focused on fast startup and a
 - Open internal PDF links and confirm external links before leaving the application.
 - Read the PDF outline into a Contents tab when the document provides one.
 
+## Phase 12 scope
+
+- Offer highlight and underline annotations without modifying the source PDF.
+- Provide File menu commands for opening, saving local state, and closing.
+- Keep tooltips readable in the dark interface.
+- Show a thin activity indicator for opening, navigation, and search work.
+- Show recent local PDFs on a lightweight start screen.
+
 ## Performance direction
 
 The first target metric is time-to-first-page:
@@ -118,7 +126,7 @@ Ctrl+F opens document search, Ctrl+L focuses the page number, and Ctrl+0 restore
 - Use Left/Right for the previous or next page; Page Up/Page Down and Space scroll before changing pages.
 - Use Home/End for the current page and Ctrl+Home/Ctrl+End for the first or last document page.
 - Use Ctrl+O to open, Ctrl+F to find, Ctrl+L to enter a page, Ctrl+S to save local reading state, and Ctrl+W to close.
-- Use Ctrl+D for bookmarks, Ctrl+Shift+H for highlights, and Ctrl+Shift+N for notes.
+- Use Ctrl+D for bookmarks, Ctrl+Shift+H for highlights, Ctrl+Shift+U for underlines, and Ctrl+Shift+N for notes.
 
 Windows chooses default applications through its own user-controlled Default Apps page. The installer registers Pro PDF Reader as a PDF candidate and can open that page, but it never replaces the current default silently.
 
