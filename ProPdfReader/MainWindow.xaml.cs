@@ -729,6 +729,7 @@ public partial class MainWindow : Window
 
     private void FileMenuButton_Click(object sender, RoutedEventArgs e)
     {
+        FileMenuButton.ContextMenu.PlacementTarget = FileMenuButton;
         FileMenuButton.ContextMenu.IsOpen = true;
     }
 

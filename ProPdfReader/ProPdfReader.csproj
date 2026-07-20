@@ -10,7 +10,7 @@
     <ApplicationIcon>Assets\ProPdfReader.ico</ApplicationIcon>
     <AssemblyName>ProPdfReader</AssemblyName>
     <RootNamespace>ProPdfReader</RootNamespace>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <AssemblyTitle>Pro PDF Reader</AssemblyTitle>
     <Product>Pro PDF Reader</Product>
