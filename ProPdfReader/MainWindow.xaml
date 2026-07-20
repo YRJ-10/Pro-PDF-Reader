@@ -10,7 +10,8 @@
         MinWidth="820"
         Height="760"
         Width="1120"
-        Background="#F4F4F1">
+        Background="#F4F4F1"
+        PreviewKeyDown="Window_PreviewKeyDown">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="48" />
