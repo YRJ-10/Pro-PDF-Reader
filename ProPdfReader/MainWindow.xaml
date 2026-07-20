@@ -12,6 +12,9 @@
         Height="760"
         Width="1120"
         Background="#F4F4F1"
+        AllowDrop="True"
+        PreviewDragOver="Window_PreviewDragOver"
+        Drop="Window_Drop"
         PreviewKeyDown="Window_PreviewKeyDown">
     <Grid>
         <Grid.RowDefinitions>
@@ -381,6 +384,7 @@
                        Margin="10,0"
                        VerticalAlignment="Center"
                        Foreground="#595952"
+                       TextTrimming="CharacterEllipsis"
                        Text="Ready" />
         </Border>
     </Grid>

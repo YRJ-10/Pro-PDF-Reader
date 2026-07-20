@@ -72,6 +72,15 @@ Pro PDF Reader is a lightweight Windows PDF reader focused on fast startup and a
 - Register Pro PDF Reader for Open with and the Windows Default Apps UI.
 - Remove application registration cleanly during uninstall.
 
+## Phase 9 scope
+
+- Prompt for protected PDF passwords without persisting them.
+- Keep rendering, text selection, and search available after unlocking.
+- Show clear error states for damaged or unsupported PDFs.
+- Cap search results at 10,000 entries to bound memory use.
+- Open PDFs with Ctrl+O or by dropping one file onto the window.
+- Generate SHA-256 checksums and verify release artifacts automatically.
+
 ## Performance direction
 
 The first target metric is time-to-first-page:
@@ -95,6 +104,10 @@ Ctrl+Shift+N adds a note to the current text selection. Notes remain local and a
 Ctrl+F opens document search, Ctrl+L focuses the page number, and Ctrl+0 restores fit-width mode. Search and text extraction remain outside the startup path.
 
 Windows chooses default applications through its own user-controlled Default Apps page. The installer registers Pro PDF Reader as a PDF candidate and can open that page, but it never replaces the current default silently.
+
+Passwords are held only for the current document session so encrypted PDFs can be rendered and searched. They are never written to the local document-state file.
+
+The v1.0 build targets 64-bit Windows 10 version 2004 or newer. Scanned image-only PDFs can be viewed, but text selection and search require an existing text layer; OCR is outside the v1.0 scope.
 
 ## Development
 
@@ -122,4 +135,10 @@ Create both the portable ZIP and installer after installing Inno Setup 6 or 7:
 powershell -ExecutionPolicy Bypass -File .\build\Publish.ps1
 ```
 
-Release files are written under `artifacts/` and are intentionally ignored by Git. Public releases should be code-signed before distribution; unsigned local builds can trigger a Windows SmartScreen warning.
+Verify checksums, metadata, and portable contents:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build\Verify-Release.ps1
+```
+
+Release files and `SHA256SUMS.txt` are written under `artifacts/` and are intentionally ignored by Git. Public releases should be code-signed before distribution; unsigned local builds can trigger a Windows SmartScreen warning. See `RELEASE.md` for the full checklist.

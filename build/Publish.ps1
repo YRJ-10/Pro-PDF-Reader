@@ -11,6 +11,7 @@ $project = Join-Path $root 'ProPdfReader\ProPdfReader.csproj'
 $publishDirectory = Join-Path $root 'artifacts\publish\win-x64'
 $installerDirectory = Join-Path $root 'artifacts\installer'
 $portableArchive = Join-Path $root "artifacts\ProPdfReader-$Version-win-x64-portable.zip"
+$checksumPath = Join-Path $root 'artifacts\SHA256SUMS.txt'
 $installerScript = Join-Path $root 'build\ProPdfReader.iss'
 $distributionDirectory = Join-Path $root 'distribution'
 
@@ -77,6 +78,19 @@ if (Test-Path -LiteralPath $portableArchive) {
 
 Compress-Archive -Path (Join-Path $publishDirectory '*') -DestinationPath $portableArchive -CompressionLevel Optimal
 
+$releaseFiles = @($portableArchive)
+if (-not $SkipInstaller) {
+    $releaseFiles += Get-ChildItem -LiteralPath $installerDirectory -Filter '*.exe' |
+        Select-Object -ExpandProperty FullName
+}
+
+$checksumLines = $releaseFiles | Sort-Object | ForEach-Object {
+    $file = Get-Item -LiteralPath $_
+    $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+    "$hash *$($file.Name)"
+}
+[IO.File]::WriteAllLines($checksumPath, $checksumLines, [Text.Encoding]::ASCII)
+
 Write-Host ''
 Write-Host 'Build outputs:'
 Write-Host "  Portable:  $portableArchive"
@@ -85,3 +99,4 @@ if (-not $SkipInstaller) {
         Write-Host "  Installer: $($_.FullName)"
     }
 }
+Write-Host "  Checksums: $checksumPath"

@@ -6,18 +6,21 @@ namespace ProPdfReader.Text;
 internal sealed class PdfTextService : IDisposable
 {
     private const int MaximumCachedPages = 8;
+    private const int MaximumSearchMatches = 10_000;
 
     private readonly object _gate = new();
     private readonly string _path;
+    private string? _password;
     private readonly Dictionary<int, PageText> _cache = [];
     private readonly Queue<int> _cacheOrder = [];
 
     private PdfPigDocument? _document;
     private bool _isDisposed;
 
-    public PdfTextService(string path)
+    public PdfTextService(string path, string? password = null)
     {
         _path = path;
+        _password = password;
     }
 
     public Task<PageText> GetPageAsync(int pageNumber, CancellationToken cancellationToken = default)
@@ -25,7 +28,7 @@ internal sealed class PdfTextService : IDisposable
         return Task.Run(() => GetPage(pageNumber, cancellationToken), cancellationToken);
     }
 
-    public Task<IReadOnlyList<PdfSearchMatch>> SearchAsync(
+    public Task<PdfSearchResult> SearchAsync(
         string query,
         int pageCount,
         IProgress<int>? progress = null,
@@ -34,10 +37,10 @@ internal sealed class PdfTextService : IDisposable
         var normalizedQuery = NormalizeSearchText(query);
         if (normalizedQuery.Length == 0)
         {
-            return Task.FromResult<IReadOnlyList<PdfSearchMatch>>([]);
+            return Task.FromResult(new PdfSearchResult([], false));
         }
 
-        return Task.Run<IReadOnlyList<PdfSearchMatch>>(() =>
+        return Task.Run(() =>
         {
             var matches = new List<PdfSearchMatch>();
 
@@ -45,11 +48,18 @@ internal sealed class PdfTextService : IDisposable
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var page = GetPage(pageNumber, cancellationToken);
-                AddPageMatches(page, (uint)(pageNumber - 1), normalizedQuery, matches);
-                progress?.Report(pageNumber);
+                if (AddPageMatches(page, (uint)(pageNumber - 1), normalizedQuery, matches))
+                {
+                    return new PdfSearchResult(matches, true);
+                }
+
+                if (pageNumber == pageCount || pageNumber % 8 == 0)
+                {
+                    progress?.Report(pageNumber);
+                }
             }
 
-            return matches;
+            return new PdfSearchResult(matches, false);
         }, cancellationToken);
     }
 
@@ -66,7 +76,11 @@ internal sealed class PdfTextService : IDisposable
                 return cachedPage;
             }
 
-            _document ??= PdfPigDocument.Open(_path);
+            _document ??= _password is null
+                ? PdfPigDocument.Open(_path)
+                : PdfPigDocument.Open(
+                    _path,
+                    new UglyToad.PdfPig.ParsingOptions { Password = _password });
             var page = _document.GetPage(pageNumber);
             var words = NearestNeighbourWordExtractor.Instance
                 .GetWords(page.Letters)
@@ -96,7 +110,7 @@ internal sealed class PdfTextService : IDisposable
         }
     }
 
-    private static void AddPageMatches(
+    private static bool AddPageMatches(
         PageText page,
         uint pageIndex,
         string query,
@@ -104,7 +118,7 @@ internal sealed class PdfTextService : IDisposable
     {
         if (page.Words.Count == 0)
         {
-            return;
+            return false;
         }
 
         var wordStarts = new int[page.Words.Count];
@@ -138,8 +152,15 @@ internal sealed class PdfTextService : IDisposable
             var startWordIndex = FindWordIndex(wordStarts, matchIndex);
             var endWordIndex = FindWordIndex(wordStarts, matchIndex + query.Length - 1);
             matches.Add(new PdfSearchMatch(pageIndex, startWordIndex, endWordIndex));
+            if (matches.Count >= MaximumSearchMatches)
+            {
+                return true;
+            }
+
             searchIndex = matchIndex + Math.Max(1, query.Length);
         }
+
+        return false;
     }
 
     private static int FindWordIndex(int[] wordStarts, int characterIndex)
@@ -167,6 +188,7 @@ internal sealed class PdfTextService : IDisposable
             _cacheOrder.Clear();
             _document?.Dispose();
             _document = null;
+            _password = null;
         }
     }
 }

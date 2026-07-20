@@ -19,3 +19,7 @@ internal sealed record PdfSearchMatch(
     uint PageIndex,
     int StartWordIndex,
     int EndWordIndex);
+
+internal sealed record PdfSearchResult(
+    IReadOnlyList<PdfSearchMatch> Matches,
+    bool IsTruncated);

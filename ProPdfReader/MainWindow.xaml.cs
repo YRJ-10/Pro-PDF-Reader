@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -49,9 +50,11 @@ public partial class MainWindow : Window
     private int _viewRevision;
     private bool _isQualityRendering;
     private PdfTextService? _textService;
+    private string? _currentPassword;
     private DocumentState? _documentState;
     private CancellationTokenSource? _searchCancellation;
     private IReadOnlyList<PdfSearchMatch> _searchMatches = [];
+    private bool _searchResultsTruncated;
     private int _searchMatchIndex = -1;
     private string _completedSearchQuery = string.Empty;
     private bool _isSearching;
@@ -99,7 +102,15 @@ public partial class MainWindow : Window
 
             var stateTask = _stateStore.LoadAsync(path);
             var file = await StorageFile.GetFileFromPathAsync(path);
-            var document = await PdfDocument.LoadFromFileAsync(file);
+            var loadedDocument = await LoadPdfDocumentAsync(file);
+            if (loadedDocument is null)
+            {
+                await stateTask;
+                ShowOpenFailure("Opening was canceled.");
+                return;
+            }
+
+            var document = loadedDocument.Document;
             var documentState = await stateTask;
 
             if (generation != _documentGeneration)
@@ -113,6 +124,7 @@ public partial class MainWindow : Window
             }
 
             _document = document;
+            _currentPassword = loadedDocument.Password;
             _currentPath = path;
             _currentPageIndex = Math.Min(documentState.LastPageIndex, document.PageCount - 1);
             _documentState = documentState;
@@ -122,6 +134,7 @@ public partial class MainWindow : Window
             _documentState.Notes.RemoveAll(note => note.PageIndex >= document.PageCount);
 
             FileNameText.Text = Path.GetFileName(path);
+            Title = $"{Path.GetFileName(path)} - Pro PDF Reader";
             EmptyStateText.Visibility = Visibility.Collapsed;
             RefreshBookmarksList();
             RefreshNotesList();
@@ -140,11 +153,7 @@ public partial class MainWindow : Window
         {
             if (generation == _documentGeneration)
             {
-                _document = null;
-                _currentPath = null;
-                PageImage.Source = null;
-                EmptyStateText.Visibility = Visibility.Visible;
-                SetStatus($"Could not open PDF: {ex.Message}");
+                ShowOpenFailure(GetOpenFailureMessage(ex));
             }
         }
         finally
@@ -157,6 +166,77 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task<LoadedPdfDocument?> LoadPdfDocumentAsync(StorageFile file)
+    {
+        try
+        {
+            return new LoadedPdfDocument(await PdfDocument.LoadFromFileAsync(file), null);
+        }
+        catch (Exception ex) when (IsWrongPassword(ex))
+        {
+        }
+
+        var previousAttemptFailed = false;
+        while (true)
+        {
+            var passwordWindow = new PdfPasswordWindow(file.Name, previousAttemptFailed)
+            {
+                Owner = this
+            };
+
+            if (passwordWindow.ShowDialog() != true)
+            {
+                return null;
+            }
+
+            var password = passwordWindow.Password;
+            try
+            {
+                var document = await PdfDocument.LoadFromFileAsync(file, password);
+                return new LoadedPdfDocument(document, password);
+            }
+            catch (Exception ex) when (IsWrongPassword(ex))
+            {
+                previousAttemptFailed = true;
+            }
+        }
+    }
+
+    private static bool IsWrongPassword(Exception exception)
+    {
+        const int errorWrongPassword = unchecked((int)0x8007052B);
+        const int errorInvalidPassword = unchecked((int)0x80070056);
+        return exception.HResult is errorWrongPassword or errorInvalidPassword ||
+               (exception.InnerException is not null && IsWrongPassword(exception.InnerException));
+    }
+
+    private void ShowOpenFailure(string message)
+    {
+        _document = null;
+        _currentPath = null;
+        _currentPassword = null;
+        _documentState = null;
+        PageImage.Source = null;
+        FileNameText.Text = string.Empty;
+        Title = "Pro PDF Reader";
+        EmptyStateText.Text = message;
+        EmptyStateText.Visibility = Visibility.Visible;
+        SetStatus(message);
+    }
+
+    private static string GetOpenFailureMessage(Exception exception)
+    {
+        return exception switch
+        {
+            FileNotFoundException => "The PDF file could not be found.",
+            UnauthorizedAccessException => "Windows denied access to this PDF.",
+            InvalidDataException => exception.Message,
+            COMException { HResult: unchecked((int)0x8003001E) } =>
+                "This PDF is damaged or could not be read completely.",
+            _ => "This PDF could not be opened. It may be damaged or use an unsupported format."
+        };
+    }
+
     private int BeginDocumentLoad()
     {
         var generation = ++_documentGeneration;
@@ -165,6 +245,7 @@ public partial class MainWindow : Window
         ResetSearchResults();
         var previousTextService = _textService;
         _textService = null;
+        _currentPassword = null;
         _documentState = null;
         TextSelectionLayer.ClearPage();
         _pageBaseWidth = 0;
@@ -230,7 +311,7 @@ public partial class MainWindow : Window
             var textService = _textService;
             if (textService is null)
             {
-                textService = new PdfTextService(path);
+                textService = new PdfTextService(path, _currentPassword);
                 _textService = textService;
             }
 
@@ -409,6 +490,11 @@ public partial class MainWindow : Window
 
     private async void OpenButton_Click(object sender, RoutedEventArgs e)
     {
+        await OpenPdfFromDialogAsync();
+    }
+
+    private async Task OpenPdfFromDialogAsync()
+    {
         var dialog = new OpenFileDialog
         {
             Filter = "PDF files (*.pdf)|*.pdf",
@@ -419,6 +505,39 @@ public partial class MainWindow : Window
         {
             await OpenPdfAsync(dialog.FileName);
         }
+    }
+
+    private void Window_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = !_isBusy && GetDroppedPdfPath(e.Data) is not null
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void Window_Drop(object sender, DragEventArgs e)
+    {
+        var path = GetDroppedPdfPath(e.Data);
+        if (path is null || _isBusy)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await OpenPdfAsync(path);
+    }
+
+    private static string? GetDroppedPdfPath(IDataObject data)
+    {
+        if (!data.GetDataPresent(DataFormats.FileDrop) ||
+            data.GetData(DataFormats.FileDrop) is not string[] { Length: 1 } files)
+        {
+            return null;
+        }
+
+        return Path.GetExtension(files[0]).Equals(".pdf", StringComparison.OrdinalIgnoreCase)
+            ? files[0]
+            : null;
     }
 
     private async void PreviousButton_Click(object sender, RoutedEventArgs e)
@@ -718,6 +837,13 @@ public partial class MainWindow : Window
 
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.O)
+        {
+            await OpenPdfFromDialogAsync();
+            e.Handled = true;
+            return;
+        }
+
         if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.F)
         {
             ShowSearchPane();
@@ -864,6 +990,7 @@ public partial class MainWindow : Window
     private void SetStatus(string message)
     {
         StatusText.Text = message;
+        StatusText.ToolTip = message;
     }
 
     private void SearchPaneButton_Click(object sender, RoutedEventArgs e)
@@ -970,7 +1097,7 @@ public partial class MainWindow : Window
             var textService = _textService;
             if (textService is null)
             {
-                textService = new PdfTextService(path);
+                textService = new PdfTextService(path, _currentPassword);
                 _textService = textService;
             }
 
@@ -981,7 +1108,7 @@ public partial class MainWindow : Window
                     SearchStatusText.Text = $"Searching {pageNumber}/{document.PageCount}";
                 }
             });
-            var matches = await textService.SearchAsync(
+            var searchResult = await textService.SearchAsync(
                 query,
                 (int)document.PageCount,
                 progress,
@@ -992,10 +1119,11 @@ public partial class MainWindow : Window
                 return;
             }
 
-            _searchMatches = matches;
+            _searchMatches = searchResult.Matches;
+            _searchResultsTruncated = searchResult.IsTruncated;
             _completedSearchQuery = query;
 
-            if (matches.Count == 0)
+            if (_searchMatches.Count == 0)
             {
                 _searchMatchIndex = -1;
                 SearchStatusText.Text = "No matches";
@@ -1075,7 +1203,8 @@ public partial class MainWindow : Window
         }
 
         var match = _searchMatches[_searchMatchIndex];
-        SearchStatusText.Text = $"{_searchMatchIndex + 1} of {_searchMatches.Count}";
+        var truncatedSuffix = _searchResultsTruncated ? "+" : string.Empty;
+        SearchStatusText.Text = $"{_searchMatchIndex + 1} of {_searchMatches.Count}{truncatedSuffix}";
 
         if (match.PageIndex != _currentPageIndex)
         {
@@ -1108,6 +1237,7 @@ public partial class MainWindow : Window
     private void ResetSearchResults()
     {
         _searchMatches = [];
+        _searchResultsTruncated = false;
         _searchMatchIndex = -1;
         _completedSearchQuery = string.Empty;
         SearchStatusText.Text = string.Empty;
@@ -1595,6 +1725,8 @@ public partial class MainWindow : Window
     private sealed record RenderedPage(BitmapSource Image, double Width, double Height);
 
     private sealed record CachedPage(RenderedPage Page, LinkedListNode<uint> OrderNode);
+
+    private sealed record LoadedPdfDocument(PdfDocument Document, string? Password);
 
     private enum ZoomMode
     {
