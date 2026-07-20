@@ -33,6 +33,7 @@ public partial class MainWindow : Window
     private readonly DocumentStateStore _stateStore = new();
     private readonly DispatcherTimer _stateSaveTimer;
     private readonly DispatcherTimer _qualityRenderTimer;
+    private readonly DispatcherTimer _autoScrollTimer;
 
     private PdfDocument? _document;
     private string? _currentPath;
@@ -65,6 +66,8 @@ public partial class MainWindow : Window
     private PdfPageView? _activePageView;
     private bool _isUpdatingViewportPage;
     private bool _isUpdatingRecentDocuments;
+    private bool _isAutoScrolling;
+    private Point _autoScrollAnchor;
 
     private TextSelectionLayer TextSelectionLayer => _activePageView?.TextLayer ?? _emptyTextSelectionLayer;
 
@@ -85,6 +88,11 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromMilliseconds(300)
         };
         _qualityRenderTimer.Tick += QualityRenderTimer_Tick;
+        _autoScrollTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(16)
+        };
+        _autoScrollTimer.Tick += AutoScrollTimer_Tick;
         Loaded += MainWindow_Loaded;
         UpdateSearchControls();
         UpdateNavigationState();
@@ -253,6 +261,7 @@ public partial class MainWindow : Window
 
     private int BeginDocumentLoad()
     {
+        StopAutoScroll();
         var generation = ++_documentGeneration;
         _qualityRenderTimer.Stop();
         CancelSearch();
@@ -972,6 +981,84 @@ public partial class MainWindow : Window
             return;
         }
 
+        StopAutoScroll();
+
+    }
+
+    private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Middle && _document is not null && DocumentPagesList.IsMouseOver)
+        {
+            if (_isAutoScrolling)
+            {
+                StopAutoScroll();
+            }
+            else
+            {
+                StartAutoScroll(e.GetPosition(DocumentPagesList));
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (_isAutoScrolling)
+        {
+            StopAutoScroll();
+            e.Handled = true;
+        }
+    }
+
+    private void StartAutoScroll(Point anchor)
+    {
+        _isAutoScrolling = true;
+        _autoScrollAnchor = anchor;
+        Canvas.SetLeft(AutoScrollIndicator, anchor.X - AutoScrollIndicator.Width / 2);
+        Canvas.SetTop(AutoScrollIndicator, anchor.Y - AutoScrollIndicator.Height / 2);
+        AutoScrollIndicator.Visibility = Visibility.Visible;
+        DocumentPagesList.Cursor = Cursors.ScrollNS;
+        Mouse.Capture(DocumentPagesList, CaptureMode.SubTree);
+        _autoScrollTimer.Start();
+    }
+
+    private void StopAutoScroll()
+    {
+        if (!_isAutoScrolling)
+        {
+            return;
+        }
+
+        _isAutoScrolling = false;
+        _autoScrollTimer.Stop();
+        AutoScrollIndicator.Visibility = Visibility.Collapsed;
+        DocumentPagesList.ClearValue(CursorProperty);
+        if (Mouse.Captured == DocumentPagesList)
+        {
+            Mouse.Capture(null);
+        }
+    }
+
+    private void AutoScrollTimer_Tick(object? sender, EventArgs e)
+    {
+        if (!_isAutoScrolling || _documentScrollViewer is null)
+        {
+            return;
+        }
+
+        var distance = Mouse.GetPosition(DocumentPagesList).Y - _autoScrollAnchor.Y;
+        const double deadZone = 12;
+        if (Math.Abs(distance) <= deadZone)
+        {
+            return;
+        }
+
+        var speed = Math.Sign(distance) * Math.Min(64, 1 + Math.Pow((Math.Abs(distance) - deadZone) / 12, 1.35));
+        DocumentScrollViewer.ScrollToVerticalOffset(DocumentScrollViewer.VerticalOffset + speed);
+    }
+
+    private void DocumentPagesList_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        StopAutoScroll();
     }
 
     private void ChangeZoom(double delta)
@@ -1212,6 +1299,13 @@ public partial class MainWindow : Window
 
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (_isAutoScrolling && e.Key == Key.Escape)
+        {
+            StopAutoScroll();
+            e.Handled = true;
+            return;
+        }
+
         if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.O)
         {
             await OpenPdfFromDialogAsync();
@@ -1708,12 +1802,12 @@ public partial class MainWindow : Window
 
     private void BookmarksPaneButton_Click(object sender, RoutedEventArgs e)
     {
-        ShowSidePane(tabIndex: 0);
+        ShowSidePane(tabIndex: 1);
     }
 
     private void NotesPaneButton_Click(object sender, RoutedEventArgs e)
     {
-        ShowSidePane(tabIndex: 1);
+        ShowSidePane(tabIndex: 2);
     }
 
     private async Task LoadOutlineAsync(int generation)
@@ -2329,6 +2423,7 @@ public partial class MainWindow : Window
         CancelSearch();
         _qualityRenderTimer.Stop();
         _stateSaveTimer.Stop();
+        StopAutoScroll();
 
         if (_documentState is not null)
         {

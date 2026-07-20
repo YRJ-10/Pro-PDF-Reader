@@ -10,6 +10,8 @@
 - Internal and external PDF links plus a Contents tab sourced from the document outline.
 - Highlight and underline annotation choices.
 - File menu commands, a thin activity indicator, and a recent-document start screen.
+- Middle-mouse autoscroll and Contents-first side-panel navigation.
+- Application and PDF file icons generated from the supplied `appicon.png` artwork.
 
 ### Fixed
 

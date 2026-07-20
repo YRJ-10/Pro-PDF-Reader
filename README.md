@@ -97,6 +97,12 @@ Pro PDF Reader is a lightweight Windows PDF reader focused on fast startup and a
 - Show a thin activity indicator for opening, navigation, and search work.
 - Show recent local PDFs on a lightweight start screen.
 
+## Phase 13 scope
+
+- Put PDF Contents first in the document side panel.
+- Add middle-mouse autoscroll for continuous reading.
+- Build the application, PDF association, and installer icons from `appicon.png`.
+
 ## Performance direction
 
 The first target metric is time-to-first-page:
@@ -122,6 +128,7 @@ Ctrl+F opens document search, Ctrl+L focuses the page number, and Ctrl+0 restore
 ## Keyboard and mouse
 
 - Scroll continuously through the complete document without resetting the scrollbar.
+- Click the middle mouse button over the document to start or stop autoscroll; press Escape to stop.
 - Use Ctrl+mouse wheel or Ctrl++/Ctrl+- to zoom.
 - Use Left/Right for the previous or next page; Page Up/Page Down and Space scroll before changing pages.
 - Use Home/End for the current page and Ctrl+Home/Ctrl+End for the first or last document page.

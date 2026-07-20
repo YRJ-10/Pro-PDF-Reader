@@ -15,6 +15,7 @@
         AllowDrop="True"
         PreviewDragOver="Window_PreviewDragOver"
         Drop="Window_Drop"
+        PreviewMouseDown="Window_PreviewMouseDown"
         PreviewMouseWheel="Window_PreviewMouseWheel"
         PreviewKeyDown="Window_PreviewKeyDown">
     <Grid>
@@ -289,6 +290,15 @@
                                 Grid.Row="1"
                                 BorderThickness="0,1,0,0"
                                 Background="Transparent">
+                        <TabItem x:Name="ContentsTab"
+                                 Header="Contents"
+                                 Visibility="Collapsed">
+                            <ListBox x:Name="ContentsList"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     SelectionChanged="ContentsList_SelectionChanged" />
+                        </TabItem>
+
                         <TabItem Header="Bookmarks">
                             <Grid>
                                 <ListBox x:Name="BookmarksList"
@@ -351,14 +361,6 @@
                             </Grid>
                         </TabItem>
 
-                        <TabItem x:Name="ContentsTab"
-                                 Header="Contents"
-                                 Visibility="Collapsed">
-                            <ListBox x:Name="ContentsList"
-                                     BorderThickness="0"
-                                     Background="Transparent"
-                                     SelectionChanged="ContentsList_SelectionChanged" />
-                        </TabItem>
                     </TabControl>
                 </Grid>
             </Border>
@@ -372,6 +374,24 @@
                              Foreground="{StaticResource AccentBrush}"
                              IsIndeterminate="True"
                              Visibility="Collapsed" />
+
+                <Canvas Panel.ZIndex="30"
+                        IsHitTestVisible="False">
+                    <Border x:Name="AutoScrollIndicator"
+                            Width="28"
+                            Height="28"
+                            Background="{StaticResource PanelRaisedBrush}"
+                            BorderBrush="{StaticResource AccentBrush}"
+                            BorderThickness="1"
+                            CornerRadius="14"
+                            Visibility="Collapsed">
+                        <TextBlock HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="15"
+                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                   Text="&#x2195;" />
+                    </Border>
+                </Canvas>
 
                 <ListBox x:Name="DocumentPagesList"
                          Background="#121418"
@@ -387,6 +407,7 @@
                          VirtualizingPanel.ScrollUnit="Pixel"
                          VirtualizingPanel.VirtualizationMode="Standard"
                          Loaded="DocumentPagesList_Loaded"
+                         LostMouseCapture="DocumentPagesList_LostMouseCapture"
                          SizeChanged="DocumentScrollViewer_SizeChanged">
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>
