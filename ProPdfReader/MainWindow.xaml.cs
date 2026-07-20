@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using ProPdfReader.State;
 using ProPdfReader.Text;
 using Windows.Data.Pdf;
 using Windows.Storage;
@@ -20,6 +21,8 @@ public partial class MainWindow : Window
     private readonly Dictionary<uint, CachedPage> _pageCache = [];
     private readonly Dictionary<uint, Task<RenderedPage>> _renderTasks = [];
     private readonly LinkedList<uint> _cacheOrder = [];
+    private readonly DocumentStateStore _stateStore = new();
+    private readonly DispatcherTimer _stateSaveTimer;
 
     private PdfDocument? _document;
     private string? _currentPath;
@@ -27,10 +30,16 @@ public partial class MainWindow : Window
     private int _documentGeneration;
     private bool _isNavigating;
     private PdfTextService? _textService;
+    private DocumentState? _documentState;
 
     public MainWindow()
     {
         InitializeComponent();
+        _stateSaveTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(750)
+        };
+        _stateSaveTimer.Tick += StateSaveTimer_Tick;
         UpdateNavigationState();
     }
 
@@ -43,24 +52,35 @@ public partial class MainWindow : Window
         }
 
         requestStartedAt = requestStartedAt == 0 ? Stopwatch.GetTimestamp() : requestStartedAt;
+        SetBusy(true);
+        _stateSaveTimer.Stop();
+        await SaveCurrentStateAsync(reportFailure: false);
         var generation = BeginDocumentLoad();
 
         try
         {
-            SetBusy(true);
             SetStatus("Opening PDF...");
 
+            var stateTask = _stateStore.LoadAsync(path);
             var file = await StorageFile.GetFileFromPathAsync(path);
             var document = await PdfDocument.LoadFromFileAsync(file);
+            var documentState = await stateTask;
 
             if (generation != _documentGeneration)
             {
                 return;
             }
 
+            if (document.PageCount == 0)
+            {
+                throw new InvalidDataException("The PDF contains no pages.");
+            }
+
             _document = document;
             _currentPath = path;
-            _currentPageIndex = 0;
+            _currentPageIndex = Math.Min(documentState.LastPageIndex, document.PageCount - 1);
+            _documentState = documentState;
+            _documentState.LastOpenedUtc = DateTime.UtcNow;
 
             FileNameText.Text = Path.GetFileName(path);
             EmptyStateText.Visibility = Visibility.Collapsed;
@@ -69,7 +89,9 @@ public partial class MainWindow : Window
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
 
             var elapsed = Stopwatch.GetElapsedTime(requestStartedAt).TotalMilliseconds;
-            SetStatus($"Opened in {elapsed:0} ms | {path}");
+            var restoredPage = _currentPageIndex > 0 ? $" | Restored page {_currentPageIndex + 1}" : string.Empty;
+            SetStatus($"Opened in {elapsed:0} ms{restoredPage} | {path}");
+            QueueStateSave();
             _ = PrefetchNearbyPagesAsync(generation);
             _ = LoadTextLayerAsync(generation, _currentPageIndex);
         }
@@ -99,6 +121,7 @@ public partial class MainWindow : Window
         var generation = ++_documentGeneration;
         var previousTextService = _textService;
         _textService = null;
+        _documentState = null;
         TextSelectionLayer.ClearPage();
 
         if (previousTextService is not null)
@@ -367,6 +390,7 @@ public partial class MainWindow : Window
             {
                 var elapsed = Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
                 SetStatus($"Page {_currentPageIndex + 1} ready in {elapsed:0} ms | {_currentPath}");
+                QueueStateSave();
                 _ = PrefetchNearbyPagesAsync(generation);
                 _ = LoadTextLayerAsync(generation, _currentPageIndex);
             }
@@ -429,8 +453,60 @@ public partial class MainWindow : Window
         StatusText.Text = message;
     }
 
+    private void QueueStateSave()
+    {
+        if (_documentState is null)
+        {
+            return;
+        }
+
+        _documentState.LastPageIndex = _currentPageIndex;
+        _stateSaveTimer.Stop();
+        _stateSaveTimer.Start();
+    }
+
+    private async void StateSaveTimer_Tick(object? sender, EventArgs e)
+    {
+        _stateSaveTimer.Stop();
+        await SaveCurrentStateAsync(reportFailure: true);
+    }
+
+    private async Task SaveCurrentStateAsync(bool reportFailure)
+    {
+        var state = _documentState;
+        if (state is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _stateStore.SaveAsync(state);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            if (reportFailure && state == _documentState)
+            {
+                SetStatus($"Could not save reading position: {ex.Message}");
+            }
+        }
+    }
+
     protected override void OnClosed(EventArgs e)
     {
+        _stateSaveTimer.Stop();
+
+        if (_documentState is not null)
+        {
+            try
+            {
+                _stateStore.SaveAsync(_documentState).GetAwaiter().GetResult();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+
         var textService = _textService;
         _textService = null;
 

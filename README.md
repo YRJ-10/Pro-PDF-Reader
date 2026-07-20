@@ -28,6 +28,14 @@ Pro PDF Reader is a lightweight Windows PDF reader focused on fast startup and a
 - Clear a selection with Escape.
 - Cache extracted text for up to eight visited pages.
 
+## Phase 4 scope
+
+- Store one versioned local state file per PDF.
+- Restore the last successfully viewed page when reopening a document.
+- Debounce page-position writes to avoid unnecessary disk activity.
+- Replace state files atomically so an interrupted save keeps the previous file intact.
+- Preserve unreadable state files for recovery instead of silently deleting them.
+
 ## Performance direction
 
 The first target metric is time-to-first-page:
@@ -41,6 +49,8 @@ Features such as thumbnails, search indexing, annotations, bookmarks, and export
 Phase 2 background work deliberately starts only after the requested page is visible. The cache is limited to five pages to keep memory usage predictable.
 
 Phase 3 keeps text extraction off the time-to-first-page path. Image-only or scanned PDFs need OCR, which is intentionally outside this phase.
+
+Phase 4 state is stored under `%LocalAppData%\ProPdfReader\state\v1`. It remains local to the Windows account and never changes the source PDF.
 
 ## Development
 
