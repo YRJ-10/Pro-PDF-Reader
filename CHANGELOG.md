@@ -5,11 +5,13 @@
 ### Added
 
 - Dark interface with compact rounded controls and a native dark title bar.
-- Ctrl+mouse wheel zoom, local-state save, document edge navigation, and common reading shortcuts.
+- Ctrl+mouse wheel zoom, local-state save, and common reading shortcuts.
+- Virtualized continuous scrolling with per-page text selection.
+- Internal and external PDF links plus a Contents tab sourced from the document outline.
 
 ### Fixed
 
-- Continue to the next or previous page by scrolling beyond the current page edge.
+- Keep one stable scrollbar for the full document instead of resetting it for every page.
 
 ## 1.0.0 - 2026-07-20
 

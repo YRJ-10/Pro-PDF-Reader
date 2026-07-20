@@ -1,4 +1,7 @@
 using UglyToad.PdfPig.DocumentLayoutAnalysis.WordExtractor;
+using UglyToad.PdfPig.Actions;
+using UglyToad.PdfPig.Annotations;
+using UglyToad.PdfPig.Outline;
 using PdfPigDocument = UglyToad.PdfPig.PdfDocument;
 
 namespace ProPdfReader.Text;
@@ -26,6 +29,27 @@ internal sealed class PdfTextService : IDisposable
     public Task<PageText> GetPageAsync(int pageNumber, CancellationToken cancellationToken = default)
     {
         return Task.Run(() => GetPage(pageNumber, cancellationToken), cancellationToken);
+    }
+
+    public Task<IReadOnlyList<PdfOutlineItem>> GetOutlineAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.Run<IReadOnlyList<PdfOutlineItem>>(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_isDisposed, this);
+                EnsureDocumentOpen();
+
+                if (!_document!.TryGetBookmarks(out var bookmarks))
+                {
+                    return [];
+                }
+
+                return bookmarks.Roots.Select(CreateOutlineItem).ToArray();
+            }
+        }, cancellationToken);
     }
 
     public Task<PdfSearchResult> SearchAsync(
@@ -76,12 +100,8 @@ internal sealed class PdfTextService : IDisposable
                 return cachedPage;
             }
 
-            _document ??= _password is null
-                ? PdfPigDocument.Open(_path)
-                : PdfPigDocument.Open(
-                    _path,
-                    new UglyToad.PdfPig.ParsingOptions { Password = _password });
-            var page = _document.GetPage(pageNumber);
+            EnsureDocumentOpen();
+            var page = _document!.GetPage(pageNumber);
             var words = NearestNeighbourWordExtractor.Instance
                 .GetWords(page.Letters)
                 .Where(word => !string.IsNullOrWhiteSpace(word.Text))
@@ -93,10 +113,60 @@ internal sealed class PdfTextService : IDisposable
                     word.BoundingBox.Top))
                 .ToArray();
 
-            var pageText = new PageText(page.Width, page.Height, words);
+            var links = page.GetAnnotations()
+                .Where(annotation => annotation.Type == AnnotationType.Link)
+                .Select(CreatePageLink)
+                .Where(link => link is not null)
+                .Cast<PageLink>()
+                .ToArray();
+
+            var pageText = new PageText(page.Width, page.Height, words, links);
             AddToCache(pageNumber, pageText);
             return pageText;
         }
+    }
+
+    private void EnsureDocumentOpen()
+    {
+        _document ??= _password is null
+            ? PdfPigDocument.Open(_path)
+            : PdfPigDocument.Open(
+                _path,
+                new UglyToad.PdfPig.ParsingOptions { Password = _password });
+    }
+
+    private static PageLink? CreatePageLink(Annotation annotation)
+    {
+        uint? pageIndex = annotation.Action is GoToAction goTo && goTo.Destination.PageNumber > 0
+            ? (uint)(goTo.Destination.PageNumber - 1)
+            : null;
+        var uri = annotation.Action is UriAction uriAction ? uriAction.Uri : null;
+        if (!pageIndex.HasValue && string.IsNullOrWhiteSpace(uri))
+        {
+            return null;
+        }
+
+        var rectangle = annotation.Rectangle;
+        return new PageLink(
+            rectangle.Left,
+            rectangle.Bottom,
+            rectangle.Right,
+            rectangle.Top,
+            pageIndex,
+            uri);
+    }
+
+    private static PdfOutlineItem CreateOutlineItem(BookmarkNode node)
+    {
+        var pageIndex = node is DocumentBookmarkNode documentNode && documentNode.PageNumber > 0
+            ? (uint?)(documentNode.PageNumber - 1)
+            : null;
+        var uri = node is UriBookmarkNode uriNode ? uriNode.Uri : null;
+        return new PdfOutlineItem(
+            node.Title,
+            pageIndex,
+            uri,
+            node.Children.Select(CreateOutlineItem).ToArray());
     }
 
     private void AddToCache(int pageNumber, PageText pageText)

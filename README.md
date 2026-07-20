@@ -81,6 +81,14 @@ Pro PDF Reader is a lightweight Windows PDF reader focused on fast startup and a
 - Open PDFs with Ctrl+O or by dropping one file onto the window.
 - Generate SHA-256 checksums and verify release artifacts automatically.
 
+## Phase 11 scope
+
+- Scroll through one continuous document track while virtualizing off-screen pages.
+- Preserve fast rendering with the existing five-page image cache and eight-page text cache.
+- Select and annotate text independently on every realized page.
+- Open internal PDF links and confirm external links before leaving the application.
+- Read the PDF outline into a Contents tab when the document provides one.
+
 ## Performance direction
 
 The first target metric is time-to-first-page:
@@ -105,7 +113,7 @@ Ctrl+F opens document search, Ctrl+L focuses the page number, and Ctrl+0 restore
 
 ## Keyboard and mouse
 
-- Scroll beyond the top or bottom edge to move between pages.
+- Scroll continuously through the complete document without resetting the scrollbar.
 - Use Ctrl+mouse wheel or Ctrl++/Ctrl+- to zoom.
 - Use Left/Right for the previous or next page; Page Up/Page Down and Space scroll before changing pages.
 - Use Home/End for the current page and Ctrl+Home/Ctrl+End for the first or last document page.

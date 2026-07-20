@@ -327,45 +327,63 @@
                                 </StackPanel>
                             </Grid>
                         </TabItem>
+
+                        <TabItem x:Name="ContentsTab"
+                                 Header="Contents"
+                                 Visibility="Collapsed">
+                            <ListBox x:Name="ContentsList"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     SelectionChanged="ContentsList_SelectionChanged" />
+                        </TabItem>
                     </TabControl>
                 </Grid>
             </Border>
 
             <Grid Grid.Column="1">
-                <ScrollViewer x:Name="DocumentScrollViewer"
-                              HorizontalScrollBarVisibility="Auto"
-                              VerticalScrollBarVisibility="Auto"
-                              Background="#121418"
-                              SizeChanged="DocumentScrollViewer_SizeChanged">
-                    <Grid MinHeight="420">
-                        <Border x:Name="PageHost"
-                                Width="720"
-                                Height="900"
-                                Margin="24"
-                                Padding="0"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Top"
-                                Background="White"
-                                BorderBrush="#555A62"
-                                BorderThickness="1"
-                                CornerRadius="2">
-                            <Grid>
-                                <Image x:Name="PageImage"
-                                       Stretch="Uniform"
-                                       RenderOptions.BitmapScalingMode="HighQuality" />
-                                <controls:TextSelectionLayer x:Name="TextSelectionLayer"
-                                                             AutomationProperties.Name="Selectable PDF text" />
-                            </Grid>
-                        </Border>
+                <ListBox x:Name="DocumentPagesList"
+                         Background="#121418"
+                         BorderThickness="0"
+                         HorizontalContentAlignment="Stretch"
+                         ScrollViewer.CanContentScroll="True"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                         ScrollViewer.ScrollChanged="DocumentPagesList_ScrollChanged"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         VirtualizingPanel.CacheLength="1"
+                         VirtualizingPanel.CacheLengthUnit="Page"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.ScrollUnit="Pixel"
+                         VirtualizingPanel.VirtualizationMode="Standard"
+                         Loaded="DocumentPagesList_Loaded"
+                         SizeChanged="DocumentScrollViewer_SizeChanged">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Focusable" Value="False" />
+                            <Setter Property="Background" Value="Transparent" />
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <controls:PdfPageView Width="{Binding DisplayWidth}"
+                                                  Height="{Binding DisplayHeight}"
+                                                  Loaded="PdfPageView_Loaded" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
 
-                        <TextBlock x:Name="EmptyStateText"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource MutedTextBrush}"
-                                   FontSize="17"
-                                   Text="Open a PDF to start reading." />
-                    </Grid>
-                </ScrollViewer>
+                <TextBlock x:Name="EmptyStateText"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           FontSize="17"
+                           Text="Open a PDF to start reading." />
 
                 <Border x:Name="LoadingOverlay"
                         Background="#B317191D"

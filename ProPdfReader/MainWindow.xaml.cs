@@ -12,6 +12,7 @@ using Microsoft.Win32;
 using ProPdfReader.Controls;
 using ProPdfReader.State;
 using ProPdfReader.Text;
+using ProPdfReader.Viewing;
 using Windows.Data.Pdf;
 using Windows.Storage;
 using Windows.Storage.Streams;
@@ -58,6 +59,16 @@ public partial class MainWindow : Window
     private int _searchMatchIndex = -1;
     private string _completedSearchQuery = string.Empty;
     private bool _isSearching;
+    private readonly TextSelectionLayer _emptyTextSelectionLayer = new();
+    private IReadOnlyList<PdfPageViewModel> _pageModels = [];
+    private ScrollViewer? _documentScrollViewer;
+    private PdfPageView? _activePageView;
+    private bool _isUpdatingViewportPage;
+
+    private TextSelectionLayer TextSelectionLayer => _activePageView?.TextLayer ?? _emptyTextSelectionLayer;
+
+    private ScrollViewer DocumentScrollViewer =>
+        _documentScrollViewer ?? throw new InvalidOperationException("The document viewport is not ready.");
 
     public MainWindow()
     {
@@ -73,12 +84,6 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromMilliseconds(300)
         };
         _qualityRenderTimer.Tick += QualityRenderTimer_Tick;
-        TextSelectionLayer.SelectionChanged += UpdateDocumentToolState;
-        TextSelectionLayer.HighlightRequested += AddHighlightFromSelection;
-        TextSelectionLayer.HighlightRemovalRequested += RemoveHighlight;
-        TextSelectionLayer.NoteRequested += AddNoteFromSelection;
-        TextSelectionLayer.NoteEditRequested += EditNote;
-        TextSelectionLayer.NoteRemovalRequested += RemoveNote;
         UpdateSearchControls();
         UpdateNavigationState();
     }
@@ -139,6 +144,7 @@ public partial class MainWindow : Window
             EmptyStateText.Visibility = Visibility.Collapsed;
             RefreshBookmarksList();
             RefreshNotesList();
+            InitializeDocumentPages(document);
 
             await RenderCurrentPageAsync(generation);
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
@@ -149,6 +155,7 @@ public partial class MainWindow : Window
             QueueStateSave();
             _ = PrefetchNearbyPagesAsync(generation);
             _ = LoadTextLayerAsync(generation, _currentPageIndex);
+            _ = LoadOutlineAsync(generation);
         }
         catch (Exception ex)
         {
@@ -217,7 +224,11 @@ public partial class MainWindow : Window
         _currentPath = null;
         _currentPassword = null;
         _documentState = null;
-        PageImage.Source = null;
+        DocumentPagesList.ItemsSource = null;
+        _pageModels = [];
+        _activePageView = null;
+        ContentsList.Items.Clear();
+        ContentsTab.Visibility = Visibility.Collapsed;
         FileNameText.Text = string.Empty;
         Title = "Pro PDF Reader";
         EmptyStateText.Text = message;
@@ -248,11 +259,10 @@ public partial class MainWindow : Window
         _textService = null;
         _currentPassword = null;
         _documentState = null;
-        TextSelectionLayer.ClearPage();
+        _emptyTextSelectionLayer.ClearPage();
         _pageBaseWidth = 0;
         _pageBaseHeight = 0;
         _rotation = 0;
-        PageHost.LayoutTransform = Transform.Identity;
         RefreshBookmarksList();
         RefreshNotesList();
 
@@ -280,6 +290,13 @@ public partial class MainWindow : Window
         }
 
         var pageIndex = _currentPageIndex;
+        var pageView = await RealizePageViewAsync(pageIndex);
+        if (pageView is null)
+        {
+            return;
+        }
+
+        _activePageView = pageView;
         var renderedPage = await GetRenderedPageAsync(document, pageIndex, generation);
 
         if (generation != _documentGeneration || pageIndex != _currentPageIndex)
@@ -287,11 +304,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        PageImage.Source = renderedPage.Image;
+        pageView.Model?.SetSourceSize(renderedPage.Width, renderedPage.Height);
+        pageView.Model?.UpdateDisplay(GetDisplayScale());
+        pageView.SetImage(renderedPage.Image);
+        pageView.SetRotation(_rotation);
         _pageBaseWidth = Math.Min(Math.Max(renderedPage.Width, 520), 1200);
         _pageBaseHeight = _pageBaseWidth * renderedPage.Height / renderedPage.Width;
         ApplyPageView();
-        TextSelectionLayer.SetPageGeometry(
+        pageView.TextLayer.SetPageGeometry(
             renderedPage.Width,
             renderedPage.Height,
             GetCurrentPageHighlights(),
@@ -317,10 +337,12 @@ public partial class MainWindow : Window
             }
 
             var pageText = await textService.GetPageAsync((int)pageIndex + 1);
+            var pageView = GetPageView(pageIndex);
 
-            if (generation == _documentGeneration && pageIndex == _currentPageIndex)
+            if (generation == _documentGeneration &&
+                pageView?.Model?.PageIndex == pageIndex)
             {
-                TextSelectionLayer.SetPage(pageText);
+                pageView.TextLayer.SetPage(pageText);
                 ApplyCurrentSearchSelection(pageIndex);
                 UpdateDocumentToolState();
             }
@@ -334,6 +356,210 @@ public partial class MainWindow : Window
             if (generation == _documentGeneration && pageIndex == _currentPageIndex)
             {
                 SetStatus($"Text selection is unavailable on this page: {ex.Message}");
+            }
+        }
+    }
+
+    private void InitializeDocumentPages(PdfDocument document)
+    {
+        using var currentPage = document.GetPage(_currentPageIndex);
+        var width = currentPage.Size.Width;
+        var height = currentPage.Size.Height;
+        _pageBaseWidth = Math.Min(Math.Max(width, 520), 1200);
+        _pageBaseHeight = _pageBaseWidth * height / width;
+        var models = new PdfPageViewModel[document.PageCount];
+        for (uint pageIndex = 0; pageIndex < document.PageCount; pageIndex++)
+        {
+            models[pageIndex] = new PdfPageViewModel(pageIndex, width, height);
+        }
+
+        _pageModels = models;
+        ApplyPageView();
+        DocumentPagesList.ItemsSource = models;
+        DocumentPagesList.ScrollIntoView(models[_currentPageIndex]);
+        DocumentPagesList.UpdateLayout();
+    }
+
+    private async Task<PdfPageView?> RealizePageViewAsync(uint pageIndex)
+    {
+        if (pageIndex >= _pageModels.Count)
+        {
+            return null;
+        }
+
+        var model = _pageModels[(int)pageIndex];
+        DocumentPagesList.ScrollIntoView(model);
+        await Dispatcher.InvokeAsync(DocumentPagesList.UpdateLayout, DispatcherPriority.Loaded);
+        return GetPageView(pageIndex);
+    }
+
+    private PdfPageView? GetPageView(uint pageIndex)
+    {
+        return FindVisualChildren<PdfPageView>(DocumentPagesList)
+            .FirstOrDefault(view => view.Model?.PageIndex == pageIndex);
+    }
+
+    private IEnumerable<PdfPageView> GetRealizedPageViews()
+    {
+        return FindVisualChildren<PdfPageView>(DocumentPagesList);
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                yield return match;
+            }
+
+            foreach (var descendant in FindVisualChildren<T>(child))
+            {
+                yield return descendant;
+            }
+        }
+    }
+
+    private async void PdfPageView_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not PdfPageView pageView || pageView.Model is null)
+        {
+            return;
+        }
+
+        AttachPageViewEvents(pageView);
+        pageView.SetRotation(_rotation);
+        await PreparePageViewAsync(pageView, _documentGeneration);
+    }
+
+    private void AttachPageViewEvents(PdfPageView pageView)
+    {
+        if (pageView.EventsAttached)
+        {
+            return;
+        }
+
+        pageView.AttachEvents();
+        pageView.SelectionChanged += PageView_SelectionChanged;
+        pageView.HighlightRequested += view => ActivatePageView(view, AddHighlightFromSelection);
+        pageView.HighlightRemovalRequested += (view, id) => ActivatePageView(view, () => RemoveHighlight(id));
+        pageView.NoteRequested += view => ActivatePageView(view, AddNoteFromSelection);
+        pageView.NoteEditRequested += (view, id) => ActivatePageView(view, () => EditNote(id));
+        pageView.NoteRemovalRequested += (view, id) => ActivatePageView(view, () => RemoveNote(id));
+        pageView.LinkRequested += PageView_LinkRequested;
+    }
+
+    private void ActivatePageView(PdfPageView pageView, Action action)
+    {
+        SetActivePageView(pageView);
+        action();
+    }
+
+    private void PageView_SelectionChanged(PdfPageView pageView)
+    {
+        if (pageView.TextLayer.HasSelection)
+        {
+            if (_activePageView is not null && _activePageView != pageView)
+            {
+                _activePageView.TextLayer.ClearSelection();
+            }
+
+            SetActivePageView(pageView);
+        }
+
+        UpdateDocumentToolState();
+    }
+
+    private async void PageView_LinkRequested(PdfPageView pageView, PageLink link)
+    {
+        SetActivePageView(pageView);
+        if (link.TargetPageIndex is uint pageIndex)
+        {
+            await NavigateToPageAsync(pageIndex);
+        }
+        else if (!string.IsNullOrWhiteSpace(link.Uri))
+        {
+            OpenExternalLink(link.Uri);
+        }
+    }
+
+    private void OpenExternalLink(string uriText)
+    {
+        if (!Uri.TryCreate(uriText, UriKind.Absolute, out var uri) ||
+            uri.Scheme is not ("http" or "https" or "mailto"))
+        {
+            SetStatus("This PDF link uses an unsupported or unsafe address.");
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"Open this link in your default application?\n\n{uri}",
+            "Open external link",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Could not open link: {ex.Message}");
+        }
+    }
+
+    private void SetActivePageView(PdfPageView pageView)
+    {
+        if (pageView.Model is null)
+        {
+            return;
+        }
+
+        _activePageView = pageView;
+        SetCurrentPageFromViewport(pageView.Model.PageIndex);
+    }
+
+    private async Task PreparePageViewAsync(PdfPageView pageView, int generation)
+    {
+        var document = _document;
+        var model = pageView.Model;
+        if (document is null || model is null || generation != _documentGeneration)
+        {
+            return;
+        }
+
+        try
+        {
+            if (pageView.ImageSource is null)
+            {
+                var renderedPage = await GetRenderedPageAsync(document, model.PageIndex, generation);
+                if (generation != _documentGeneration || pageView.Model != model)
+                {
+                    return;
+                }
+
+                model.SetSourceSize(renderedPage.Width, renderedPage.Height);
+                model.UpdateDisplay(GetDisplayScale());
+                pageView.SetImage(renderedPage.Image);
+                pageView.TextLayer.SetPageGeometry(
+                    renderedPage.Width,
+                    renderedPage.Height,
+                    GetPageHighlights(model.PageIndex),
+                    GetPageNotes(model.PageIndex));
+            }
+
+            await LoadTextLayerAsync(generation, model.PageIndex);
+        }
+        catch (Exception ex)
+        {
+            if (generation == _documentGeneration)
+            {
+                SetStatus($"Could not render page {model.PageIndex + 1}: {ex.Message}");
             }
         }
     }
@@ -631,7 +857,85 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void Window_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    private void DocumentPagesList_Loaded(object sender, RoutedEventArgs e)
+    {
+        _documentScrollViewer = FindVisualChildren<ScrollViewer>(DocumentPagesList).FirstOrDefault();
+    }
+
+    private void DocumentPagesList_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.OriginalSource is ScrollViewer scrollViewer)
+        {
+            _documentScrollViewer = scrollViewer;
+        }
+
+        if (_document is null || _isNavigating || _isUpdatingViewportPage)
+        {
+            return;
+        }
+
+        var realizedViews = GetRealizedPageViews().ToArray();
+        foreach (var pageView in realizedViews)
+        {
+            _ = PreparePageViewAsync(pageView, _documentGeneration);
+        }
+
+        var viewportCenter = DocumentPagesList.ActualHeight / 2;
+        var currentView = realizedViews
+            .Select(view => new { View = view, Bounds = GetBoundsInViewport(view) })
+            .Where(item => item.Bounds.Bottom > 0 && item.Bounds.Top < DocumentPagesList.ActualHeight)
+            .OrderBy(item => Math.Abs(item.Bounds.Top + (item.Bounds.Height / 2) - viewportCenter))
+            .Select(item => item.View)
+            .FirstOrDefault();
+
+        if (currentView?.Model is not null)
+        {
+            _activePageView ??= currentView;
+            SetCurrentPageFromViewport(currentView.Model.PageIndex);
+        }
+    }
+
+    private Rect GetBoundsInViewport(FrameworkElement element)
+    {
+        try
+        {
+            return element.TransformToAncestor(DocumentPagesList)
+                .TransformBounds(new Rect(element.RenderSize));
+        }
+        catch (InvalidOperationException)
+        {
+            return Rect.Empty;
+        }
+    }
+
+    private void SetCurrentPageFromViewport(uint pageIndex)
+    {
+        if (_document is null || pageIndex == _currentPageIndex)
+        {
+            return;
+        }
+
+        _isUpdatingViewportPage = true;
+        try
+        {
+            _currentPageIndex = pageIndex;
+            if (_documentState is not null)
+            {
+                _documentState.LastPageIndex = pageIndex;
+                QueueStateSave();
+            }
+
+            UpdateNavigationState();
+            SyncBookmarkSelection();
+            SetStatus($"Page {pageIndex + 1} | {_currentPath}");
+        }
+        finally
+        {
+            _isUpdatingViewportPage = false;
+        }
+    }
+
+    private void Window_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         if (_document is null || e.Delta == 0)
         {
@@ -645,26 +949,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!DocumentScrollViewer.IsMouseOver || _isBusy || _isNavigating)
-        {
-            return;
-        }
-
-        const double edgeTolerance = 1;
-        var reachedBottom = DocumentScrollViewer.VerticalOffset >=
-                            DocumentScrollViewer.ScrollableHeight - edgeTolerance;
-        var reachedTop = DocumentScrollViewer.VerticalOffset <= edgeTolerance;
-
-        if (e.Delta < 0 && reachedBottom)
-        {
-            e.Handled = true;
-            await NavigateFromDocumentEdgeAsync(1, scrollToEnd: false);
-        }
-        else if (e.Delta > 0 && reachedTop)
-        {
-            e.Handled = true;
-            await NavigateFromDocumentEdgeAsync(-1, scrollToEnd: true);
-        }
     }
 
     private void ChangeZoom(double delta)
@@ -692,9 +976,11 @@ public partial class MainWindow : Window
         }
 
         _rotation = (_rotation + 90) % 360;
-        PageHost.LayoutTransform = _rotation == 0
-            ? Transform.Identity
-            : new RotateTransform(_rotation);
+        foreach (var pageView in GetRealizedPageViews())
+        {
+            pageView.SetRotation(_rotation);
+        }
+
         ApplyPageView();
         SetStatus($"Rotated to {_rotation} degrees | {_currentPath}");
     }
@@ -707,15 +993,18 @@ public partial class MainWindow : Window
         }
 
         var scale = GetDisplayScale();
-        PageHost.Width = _pageBaseWidth * scale;
-        PageHost.Height = _pageBaseHeight * scale;
+        foreach (var model in _pageModels)
+        {
+            model.UpdateDisplay(scale);
+        }
+
         _viewRevision++;
         QueueQualityRender();
     }
 
     private void QueueQualityRender()
     {
-        if (_document is null || PageImage.Source is not BitmapSource)
+        if (_document is null || _activePageView?.ImageSource is not BitmapSource)
         {
             return;
         }
@@ -729,12 +1018,13 @@ public partial class MainWindow : Window
         _qualityRenderTimer.Stop();
 
         var document = _document;
-        if (document is null || _isBusy || _isNavigating || PageImage.Source is not BitmapSource currentImage)
+        var pageView = GetPageView(_currentPageIndex) ?? _activePageView;
+        if (document is null || _isBusy || _isNavigating || pageView?.ImageSource is not BitmapSource currentImage)
         {
             return;
         }
 
-        var destinationWidth = (uint)Math.Clamp(Math.Ceiling(PageHost.Width), 1, 2400);
+        var destinationWidth = (uint)Math.Clamp(Math.Ceiling(pageView.ActualWidth), 1, 2400);
         if (currentImage.PixelWidth >= destinationWidth * 0.95)
         {
             return;
@@ -758,7 +1048,7 @@ public partial class MainWindow : Window
                 pageIndex == _currentPageIndex &&
                 viewRevision == _viewRevision)
             {
-                PageImage.Source = renderedPage.Image;
+                pageView.SetImage(renderedPage.Image);
             }
         }
         catch
@@ -838,43 +1128,18 @@ public partial class MainWindow : Window
         await NavigateToPageAsync((uint)targetPage);
     }
 
-    private async Task NavigateFromDocumentEdgeAsync(int direction, bool scrollToEnd)
+    private async Task ScrollOrNavigateAsync(int direction)
     {
-        var previousPage = _currentPageIndex;
-        await NavigateAsync(direction);
-        if (_currentPageIndex == previousPage)
+        if (direction > 0)
         {
-            return;
-        }
-
-        await Dispatcher.InvokeAsync(DocumentScrollViewer.UpdateLayout, DispatcherPriority.Loaded);
-        if (scrollToEnd)
-        {
-            DocumentScrollViewer.ScrollToEnd();
+            DocumentScrollViewer.PageDown();
         }
         else
         {
-            DocumentScrollViewer.ScrollToTop();
-        }
-    }
-
-    private async Task ScrollOrNavigateAsync(int direction)
-    {
-        const double edgeTolerance = 1;
-        if (direction > 0 &&
-            DocumentScrollViewer.VerticalOffset < DocumentScrollViewer.ScrollableHeight - edgeTolerance)
-        {
-            DocumentScrollViewer.PageDown();
-            return;
-        }
-
-        if (direction < 0 && DocumentScrollViewer.VerticalOffset > edgeTolerance)
-        {
             DocumentScrollViewer.PageUp();
-            return;
         }
 
-        await NavigateFromDocumentEdgeAsync(direction, scrollToEnd: direction < 0);
+        await Task.CompletedTask;
     }
 
     private async Task NavigateToPageAsync(uint targetPage)
@@ -886,7 +1151,6 @@ public partial class MainWindow : Window
         }
 
         _currentPageIndex = targetPage;
-        TextSelectionLayer.ClearPage();
         _isNavigating = true;
         var generation = _documentGeneration;
         var startedAt = Stopwatch.GetTimestamp();
@@ -895,17 +1159,21 @@ public partial class MainWindow : Window
         {
             SetNavigationBusy(true);
             SetStatus($"Rendering page {_currentPageIndex + 1}...");
-            await RenderCurrentPageAsync(generation);
+            var pageView = await RealizePageViewAsync(targetPage);
+            if (pageView is not null)
+            {
+                _activePageView = pageView;
+                await PreparePageViewAsync(pageView, generation);
+                pageView.BringIntoView();
+            }
 
             if (generation == _documentGeneration)
             {
-                DocumentScrollViewer.ScrollToTop();
                 var elapsed = Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
                 SetStatus($"Page {_currentPageIndex + 1} ready in {elapsed:0} ms | {_currentPath}");
                 QueueStateSave();
                 SyncBookmarkSelection();
                 _ = PrefetchNearbyPagesAsync(generation);
-                _ = LoadTextLayerAsync(generation, _currentPageIndex);
             }
         }
         catch (Exception ex)
@@ -1198,7 +1466,7 @@ public partial class MainWindow : Window
         CancelSearch();
         SearchPane.Visibility = Visibility.Collapsed;
         TextSelectionLayer.ClearSelection();
-        Keyboard.Focus(PageHost);
+        TextSelectionLayer.Focus();
     }
 
     private async Task FindOrMoveAsync(int direction)
@@ -1368,7 +1636,12 @@ public partial class MainWindow : Window
         var match = _searchMatches[_searchMatchIndex];
         if (match.PageIndex == pageIndex)
         {
-            TextSelectionLayer.SelectRange(match.StartWordIndex, match.EndWordIndex);
+            var pageView = GetPageView(pageIndex);
+            if (pageView is not null)
+            {
+                _activePageView = pageView;
+                pageView.TextLayer.SelectRange(match.StartWordIndex, match.EndWordIndex);
+            }
         }
     }
 
@@ -1404,6 +1677,79 @@ public partial class MainWindow : Window
     private void NotesPaneButton_Click(object sender, RoutedEventArgs e)
     {
         ShowSidePane(tabIndex: 1);
+    }
+
+    private async Task LoadOutlineAsync(int generation)
+    {
+        var path = _currentPath;
+        if (path is null || generation != _documentGeneration)
+        {
+            return;
+        }
+
+        try
+        {
+            var textService = _textService;
+            if (textService is null)
+            {
+                textService = new PdfTextService(path, _currentPassword);
+                _textService = textService;
+            }
+
+            var outline = await textService.GetOutlineAsync();
+            if (generation != _documentGeneration)
+            {
+                return;
+            }
+
+            ContentsList.Items.Clear();
+            AddOutlineItems(outline, level: 0);
+            ContentsTab.Visibility = ContentsList.Items.Count > 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+        catch (Exception ex)
+        {
+            if (generation == _documentGeneration)
+            {
+                SetStatus($"Contents could not be loaded: {ex.Message}");
+            }
+        }
+    }
+
+    private void AddOutlineItems(IEnumerable<PdfOutlineItem> items, int level)
+    {
+        foreach (var outlineItem in items)
+        {
+            var item = new ListBoxItem
+            {
+                Content = outlineItem.Title,
+                Tag = outlineItem,
+                Margin = new Thickness(level * 14, 0, 0, 0),
+                Padding = new Thickness(8, 6, 6, 6),
+                IsEnabled = outlineItem.PageIndex.HasValue || !string.IsNullOrWhiteSpace(outlineItem.Uri)
+            };
+            ContentsList.Items.Add(item);
+            AddOutlineItems(outlineItem.Children, level + 1);
+        }
+    }
+
+    private async void ContentsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ContentsList.SelectedItem is not ListBoxItem { Tag: PdfOutlineItem outlineItem })
+        {
+            return;
+        }
+
+        ContentsList.SelectedItem = null;
+        if (outlineItem.PageIndex is uint pageIndex)
+        {
+            await NavigateToPageAsync(pageIndex);
+        }
+        else if (!string.IsNullOrWhiteSpace(outlineItem.Uri))
+        {
+            OpenExternalLink(outlineItem.Uri);
+        }
     }
 
     private void ShowSidePane(int tabIndex)
@@ -1765,15 +2111,25 @@ public partial class MainWindow : Window
 
     private IReadOnlyList<HighlightState> GetCurrentPageHighlights()
     {
-        return _documentState?.Highlights
-            .Where(highlight => highlight.PageIndex == _currentPageIndex)
-            .ToArray() ?? [];
+        return GetPageHighlights(_currentPageIndex);
     }
 
     private IReadOnlyList<NoteState> GetCurrentPageNotes()
     {
+        return GetPageNotes(_currentPageIndex);
+    }
+
+    private IReadOnlyList<HighlightState> GetPageHighlights(uint pageIndex)
+    {
+        return _documentState?.Highlights
+            .Where(highlight => highlight.PageIndex == pageIndex)
+            .ToArray() ?? [];
+    }
+
+    private IReadOnlyList<NoteState> GetPageNotes(uint pageIndex)
+    {
         return _documentState?.Notes
-            .Where(note => note.PageIndex == _currentPageIndex)
+            .Where(note => note.PageIndex == pageIndex)
             .ToArray() ?? [];
     }
 

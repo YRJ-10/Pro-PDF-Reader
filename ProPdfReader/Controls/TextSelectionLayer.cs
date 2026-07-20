@@ -27,12 +27,15 @@ public sealed class TextSelectionLayer : FrameworkElement
     private PageText? _page;
     private IReadOnlyList<HighlightState> _highlights = [];
     private IReadOnlyList<NoteState> _notes = [];
+    private IReadOnlyList<PageLink> _links = [];
     private double _pageWidth;
     private double _pageHeight;
     private int _selectionAnchor = -1;
     private int _selectionEnd = -1;
     private Guid? _contextHighlightId;
     private Guid? _contextNoteId;
+    private PageLink? _pressedLink;
+    private Point _pressedPoint;
 
     internal event Action? SelectionChanged;
 
@@ -45,6 +48,8 @@ public sealed class TextSelectionLayer : FrameworkElement
     internal event Action<Guid>? NoteEditRequested;
 
     internal event Action<Guid>? NoteRemovalRequested;
+
+    internal event Action<PageLink>? LinkRequested;
 
     public TextSelectionLayer()
     {
@@ -112,6 +117,7 @@ public sealed class TextSelectionLayer : FrameworkElement
     internal void SetPage(PageText page)
     {
         _page = page;
+        _links = page.Links;
         _pageWidth = page.Width;
         _pageHeight = page.Height;
         ClearSelection();
@@ -147,6 +153,7 @@ public sealed class TextSelectionLayer : FrameworkElement
         _page = null;
         _highlights = [];
         _notes = [];
+        _links = [];
         _pageWidth = 0;
         _pageHeight = 0;
         ClearSelection();
@@ -212,6 +219,9 @@ public sealed class TextSelectionLayer : FrameworkElement
         base.OnMouseLeftButtonDown(e);
         Focus();
 
+        _pressedPoint = e.GetPosition(this);
+        _pressedLink = HitTestLink(_pressedPoint);
+
         var wordIndex = HitTestWord(e.GetPosition(this), allowNearest: false);
         if (wordIndex < 0)
         {
@@ -238,6 +248,7 @@ public sealed class TextSelectionLayer : FrameworkElement
 
         if (!IsMouseCaptured || e.LeftButton != MouseButtonState.Pressed || _page is null)
         {
+            Cursor = HitTestLink(e.GetPosition(this)) is null ? Cursors.IBeam : Cursors.Hand;
             return;
         }
 
@@ -259,6 +270,16 @@ public sealed class TextSelectionLayer : FrameworkElement
             ReleaseMouseCapture();
             e.Handled = true;
         }
+
+        var releasedPoint = e.GetPosition(this);
+        if (_pressedLink is not null &&
+            (releasedPoint - _pressedPoint).Length <= SystemParameters.MinimumHorizontalDragDistance &&
+            HitTestLink(releasedPoint) == _pressedLink)
+        {
+            LinkRequested?.Invoke(_pressedLink);
+        }
+
+        _pressedLink = null;
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -330,6 +351,12 @@ public sealed class TextSelectionLayer : FrameworkElement
     private Rect GetHighlightBounds(HighlightRectangle rectangle)
     {
         return GetPageBounds(rectangle.Left, rectangle.Bottom, rectangle.Right, rectangle.Top);
+    }
+
+    private PageLink? HitTestLink(Point point)
+    {
+        return _links.LastOrDefault(link =>
+            GetPageBounds(link.Left, link.Bottom, link.Right, link.Top).Contains(point));
     }
 
     private Rect GetPageBounds(double left, double bottom, double right, double top)
