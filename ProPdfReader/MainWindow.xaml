@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ProPdfReader"
+        xmlns:controls="clr-namespace:ProPdfReader.Controls"
         mc:Ignorable="d"
         Title="Pro PDF Reader"
         MinHeight="520"
@@ -63,7 +64,7 @@
                 <Grid MinHeight="420">
                     <Border x:Name="PageHost"
                             Width="720"
-                            MinHeight="900"
+                            Height="900"
                             Margin="24"
                             Padding="0"
                             HorizontalAlignment="Center"
@@ -71,9 +72,13 @@
                             Background="White"
                             BorderBrush="#CFCFC8"
                             BorderThickness="1">
-                        <Image x:Name="PageImage"
-                               Stretch="Uniform"
-                               RenderOptions.BitmapScalingMode="HighQuality" />
+                        <Grid>
+                            <Image x:Name="PageImage"
+                                   Stretch="Uniform"
+                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                            <controls:TextSelectionLayer x:Name="TextSelectionLayer"
+                                                         AutomationProperties.Name="Selectable PDF text" />
+                        </Grid>
                     </Border>
 
                     <TextBlock x:Name="EmptyStateText"

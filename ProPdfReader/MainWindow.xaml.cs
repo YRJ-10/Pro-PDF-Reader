@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using ProPdfReader.Text;
 using Windows.Data.Pdf;
 using Windows.Storage;
 using Windows.Storage.Streams;
@@ -25,6 +26,7 @@ public partial class MainWindow : Window
     private uint _currentPageIndex;
     private int _documentGeneration;
     private bool _isNavigating;
+    private PdfTextService? _textService;
 
     public MainWindow()
     {
@@ -69,6 +71,7 @@ public partial class MainWindow : Window
             var elapsed = Stopwatch.GetElapsedTime(requestStartedAt).TotalMilliseconds;
             SetStatus($"Opened in {elapsed:0} ms | {path}");
             _ = PrefetchNearbyPagesAsync(generation);
+            _ = LoadTextLayerAsync(generation, _currentPageIndex);
         }
         catch (Exception ex)
         {
@@ -94,6 +97,14 @@ public partial class MainWindow : Window
     private int BeginDocumentLoad()
     {
         var generation = ++_documentGeneration;
+        var previousTextService = _textService;
+        _textService = null;
+        TextSelectionLayer.ClearPage();
+
+        if (previousTextService is not null)
+        {
+            _ = Task.Run(previousTextService.Dispose);
+        }
 
         lock (_cacheGate)
         {
@@ -122,9 +133,47 @@ public partial class MainWindow : Window
         }
 
         PageImage.Source = renderedPage.Image;
-        PageHost.Width = Math.Min(Math.Max(renderedPage.Width, 520), 1200);
-        PageHost.MinHeight = Math.Min(Math.Max(renderedPage.Height, 680), 1600);
+        var displayWidth = Math.Min(Math.Max(renderedPage.Width, 520), 1200);
+        PageHost.Width = displayWidth;
+        PageHost.Height = displayWidth * renderedPage.Height / renderedPage.Width;
         UpdateNavigationState();
+    }
+
+    private async Task LoadTextLayerAsync(int generation, uint pageIndex)
+    {
+        var path = _currentPath;
+        if (path is null || generation != _documentGeneration)
+        {
+            return;
+        }
+
+        try
+        {
+            var textService = _textService;
+            if (textService is null)
+            {
+                textService = new PdfTextService(path);
+                _textService = textService;
+            }
+
+            var pageText = await textService.GetPageAsync((int)pageIndex + 1);
+
+            if (generation == _documentGeneration && pageIndex == _currentPageIndex)
+            {
+                TextSelectionLayer.SetPage(pageText);
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // The user opened another document while text extraction was running.
+        }
+        catch (Exception ex)
+        {
+            if (generation == _documentGeneration && pageIndex == _currentPageIndex)
+            {
+                SetStatus($"Text selection is unavailable on this page: {ex.Message}");
+            }
+        }
     }
 
     private async Task<RenderedPage> GetRenderedPageAsync(
@@ -303,6 +352,7 @@ public partial class MainWindow : Window
         }
 
         _currentPageIndex = (uint)targetPage;
+        TextSelectionLayer.ClearPage();
         _isNavigating = true;
         var generation = _documentGeneration;
         var startedAt = Stopwatch.GetTimestamp();
@@ -318,6 +368,7 @@ public partial class MainWindow : Window
                 var elapsed = Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
                 SetStatus($"Page {_currentPageIndex + 1} ready in {elapsed:0} ms | {_currentPath}");
                 _ = PrefetchNearbyPagesAsync(generation);
+                _ = LoadTextLayerAsync(generation, _currentPageIndex);
             }
         }
         catch (Exception ex)
@@ -376,6 +427,19 @@ public partial class MainWindow : Window
     private void SetStatus(string message)
     {
         StatusText.Text = message;
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        var textService = _textService;
+        _textService = null;
+
+        if (textService is not null)
+        {
+            _ = Task.Run(textService.Dispose);
+        }
+
+        base.OnClosed(e);
     }
 
     private sealed record RenderedPage(BitmapSource Image, double Width, double Height);
